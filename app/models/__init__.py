@@ -1,0 +1,128 @@
+"""Import every model so that SQLAlchemy's registry is fully populated."""
+from app.models.base import IDMixin, TimestampMixin, utcnow
+from app.models.organization import (
+    CostCenter,
+    Department,
+    Designation,
+    LegalEntity,
+    Location,
+    Organization,
+)
+from app.models.auth import Permission, Role, RolePermission, User, UserRole
+from app.models.employee import (
+    DocumentTemplate,
+    DocumentType,
+    Employee,
+    EmployeeBankDetail,
+    EmployeeDocument,
+    EmployeeJobHistory,
+    EmployeePersonalDetail,
+    EmployeeStatutoryDetail,
+)
+from app.models.payroll import (
+    PayGroup,
+    PayrollRun,
+    PayrollRunEmployee,
+    Payslip,
+    PayslipLine,
+    SalaryComponent,
+    SalaryRevision,
+    SalaryStructure,
+    SalaryStructureComponent,
+    EmployeeSalary,
+    StatutorySetting,
+)
+from app.models.tax import TaxDeclaration, TaxProof
+from app.models.expense import ExpenseClaim, ExpenseClaimLine, ExpensePolicy
+from app.models.loan import Loan, LoanPolicy, LoanRepayment
+from app.models.leave import LeaveBalance, LeaveRequest, LeaveType
+from app.models.attendance import AttendanceRecord, Holiday, Shift
+from app.models.lifecycle import (
+    Asset,
+    AssetAssignment,
+    EmployeeOnboarding,
+    ExitRequest,
+    ExitTask,
+    OnboardingTask,
+    OnboardingTemplate,
+)
+from app.models.workflow import (
+    Approval,
+    AuditLog,
+    HelpdeskTicket,
+    Notification,
+    Workflow,
+    WorkflowStep,
+)
+from app.models.currency import CurrencyRate, DisplayCurrencyPreference
+from app.models.integration import Integration
+from app.models.user_pref import ReportSchedule, TenantSetting, UserPreference
+
+__all__ = [
+    "IDMixin",
+    "TimestampMixin",
+    "utcnow",
+    "Organization",
+    "LegalEntity",
+    "Location",
+    "Department",
+    "Designation",
+    "CostCenter",
+    "User",
+    "Role",
+    "UserRole",
+    "Permission",
+    "RolePermission",
+    "Employee",
+    "EmployeePersonalDetail",
+    "EmployeeJobHistory",
+    "EmployeeBankDetail",
+    "EmployeeStatutoryDetail",
+    "DocumentType",
+    "EmployeeDocument",
+    "DocumentTemplate",
+    "PayGroup",
+    "SalaryStructure",
+    "SalaryComponent",
+    "SalaryStructureComponent",
+    "EmployeeSalary",
+    "SalaryRevision",
+    "PayrollRun",
+    "PayrollRunEmployee",
+    "Payslip",
+    "PayslipLine",
+    "StatutorySetting",
+    "TaxDeclaration",
+    "TaxProof",
+    "ExpensePolicy",
+    "ExpenseClaim",
+    "ExpenseClaimLine",
+    "LoanPolicy",
+    "Loan",
+    "LoanRepayment",
+    "LeaveType",
+    "LeaveBalance",
+    "LeaveRequest",
+    "AttendanceRecord",
+    "Shift",
+    "Holiday",
+    "OnboardingTemplate",
+    "OnboardingTask",
+    "EmployeeOnboarding",
+    "ExitRequest",
+    "ExitTask",
+    "Asset",
+    "AssetAssignment",
+    "HelpdeskTicket",
+    "Workflow",
+    "WorkflowStep",
+    "Approval",
+    "Notification",
+    "AuditLog",
+    "CurrencyRate",
+    "DisplayCurrencyPreference",
+    "Integration",
+    "UserPreference",
+    "ReportSchedule",
+    "TenantSetting",
+]

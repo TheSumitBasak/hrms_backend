@@ -1,0 +1,27 @@
+# MySQL 8 for local development.
+#   docker compose up -d
+# Matches the default DATABASE_URL:
+#   mysql+pymysql://root:admin@127.0.0.1:3306/hrms?charset=utf8mb4
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: hrms-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: hrms
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - hrms_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-padmin"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  hrms_mysql_data:
