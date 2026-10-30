@@ -1,0 +1,158 @@
+[project]
+name = "ems-backend"
+version = "1.0.0"
+description = "Employee Management System (EMS) — system of record for employee information, multi-organization, India"
+requires-python = ">=3.13"
+readme = "README.md"
+
+# Runtime dependencies. Constrained to compatible releases: patch/minor updates are
+# allowed, majors are not, so a `pip install -e .` stays reproducible without a lockfile.
+dependencies = [
+    "fastapi~=0.141.1",
+    "starlette~=1.6.0",
+    "uvicorn[standard]~=0.53.0",
+    "pydantic~=2.13.5",
+    "pydantic-settings~=2.15.0",
+    "email-validator~=2.3.0",
+    "sqlalchemy~=2.0.54",
+    "alembic~=1.20.0",
+    "pymysql~=1.2.3",
+    "cryptography~=50.0.1",
+    "bcrypt~=5.0.0",
+    "python-jose[cryptography]~=3.5.0",
+    "python-multipart~=0.0.32",
+    "tzdata>=2026.1",
+]
+
+[project.optional-dependencies]
+# Production process manager. Kept optional so local development needs no compiler.
+prod = ["gunicorn~=23.0"]
+dev = [
+    "pytest~=9.1.1",
+    "pytest-cov~=7.0",
+    "pytest-timeout~=2.4",
+    "httpx~=0.28.1",
+    "ruff~=0.14",
+    "mypy~=1.18",
+]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+# --------------------------------------------------------------------------------------
+# Ruff — linting and formatting
+# --------------------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["app", "tests"]
+extend-exclude = ["alembic/versions", ".venv", "claude-skills", ".agents", ".claude"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "C4",       # comprehensions
+    "DTZ",      # flake8-datetimez — naive datetimes are a correctness bug here (§1.4 UTC)
+    "S",        # bandit security rules
+    "RET",      # flake8-return
+    "SIM",      # flake8-simplify
+    "TID",      # banned/relative imports
+    "PTH",      # pathlib
+    "ERA",      # commented-out code
+    "PL",       # pylint subset
+    "RUF",
+]
+ignore = [
+    "PLR0913",  # many arguments: service constructors legitimately take several collaborators
+    "PLR2004",  # magic value comparison: spec constants are inherently literal
+    "B008",     # function call in default arg: this is how FastAPI Depends() works
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert with plain asserts, use hardcoded fixture secrets, and build adversarial payloads.
+# Tests assert with plain asserts, use throwaway fixture secrets, build adversarial
+# payloads, and import the application lazily inside fixtures so collection does not
+# require a configured environment.
+"tests/**" = ["S101", "S105", "S106", "S311", "PLR0915", "PLC0415"]
+# Alembic templates are generated code.
+"alembic/env.py" = ["ERA001"]
+# N818 wants an "Error" suffix on exception names. These classes are named after the
+# spec's error codes (SALARY_ASSIGNMENT_OVERLAP -> SalaryAssignmentOverlap) so a raise
+# site maps 1:1 onto the §24.3/§24.5 contract; the shared base is already `EmsError`.
+"app/core/errors.py" = ["N818"]
+# cli.py imports settings and the engine lazily on purpose: `generate-keys` must work
+# in an environment that has no configuration yet, and importing config validates it.
+"app/cli.py" = ["PLC0415"]
+# deps.py is the composition root. FastAPI injects collaborators as function parameters,
+# so a provider for a service with six dependencies necessarily has six parameters;
+# that is the DI mechanism, not an argument-count smell.
+"app/api/deps.py" = ["PLR0917", "PLR0913"]
+# Route handlers receive the request body, the caller context and each collaborator as
+# parameters, because that is how FastAPI injects them.
+"app/api/v1/endpoints/*.py" = ["PLR0917", "PLR0913"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# --------------------------------------------------------------------------------------
+# mypy — static typing
+# --------------------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+files = ["app"]
+plugins = ["pydantic.mypy"]
+strict = true
+# SQLAlchemy's declarative metaclass magic and Alembic's generated modules are excluded
+# from the strictest checks rather than silenced inline across hundreds of columns.
+warn_unused_ignores = true
+disallow_untyped_decorators = false
+exclude = ["^alembic/versions/"]
+
+[[tool.mypy.overrides]]
+module = ["jose.*", "pymysql.*"]
+ignore_missing_imports = true
+
+# --------------------------------------------------------------------------------------
+# pytest
+# --------------------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "unit: pure domain logic, no database",
+    "integration: requires a live MySQL 8 database",
+    "security: adversarial / access-control tests",
+    "concurrency: multi-connection race tests, require a live MySQL 8 database",
+    "acceptance: maps to a numbered acceptance criterion (AC-nn) or edge case (E-nn)",
+    "slow: takes more than a couple of seconds",
+]
+# Our own deprecations are errors; third-party ones are noise we do not control.
+filterwarnings = [
+    "error::DeprecationWarning:app.*",
+    "ignore::DeprecationWarning:starlette.*",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:",
+]
+timeout = 100
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = ["app/main.py", "app/jobs/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+

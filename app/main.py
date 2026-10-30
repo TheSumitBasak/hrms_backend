@@ -1,84 +1,172 @@
-"""FastAPI application entrypoint."""
+"""Application factory and entrypoint.
+
+Composition root: this is the only module that knows how to assemble settings, logging,
+middleware, exception handlers and routers. Everything else receives what it needs by
+injection, which is what keeps services testable without an HTTP layer.
+
+Routers are mounted from :mod:`app.api.router` as each domain module lands; see
+``docs/IMPLEMENTATION_CHECKLIST.md`` for current coverage.
+"""
+
 from __future__ import annotations
 
+import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from app.api.openapi import declare_error_responses
 from app.api.router import api_router
-from app.core.config import settings
-from app.core.database import SessionLocal, check_connection, init_db
-from app.core.errors import register_exception_handlers
-from app.core.middleware import IdempotencyMiddleware
+from app.core.config import Settings, get_settings
+from app.core.exception_handlers import register_exception_handlers
+from app.core.logging import configure_logging
+from app.db.session import check_connection, configure_engine, create_db_engine, dispose_engine
+from app.schemas.common import HealthResponse, ReadinessResponse
+
+logger = logging.getLogger(__name__)
+
+DESCRIPTION = """
+System of record for employee information across multiple legally distinct organizations
+in India.
+
+**This is not an HRMS.** It performs no payroll, tax, statutory contribution, attendance,
+leave, recruitment, performance, training, expense, asset or settlement processing, and
+computes no pay totals, deductions or derived compensation figures. Salary structures,
+statutory identifiers and dates are stored as reference data only.
+
+Conventions: organization-scoped resources live under `/orgs/{org_id}`; single-resource GETs
+return an `ETag` that mutating requests must echo in `If-Match`; create endpoints for
+employees, salary assignments and documents require an `Idempotency-Key`; lists use signed
+cursor pagination. Errors use a single envelope with a stable machine-readable code.
+"""
 
 
-def _maybe_auto_seed() -> None:
-    if not settings.auto_seed:
-        return
-    from app.seed import database_is_empty, run_seed
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build the ASGI application.
 
-    db = SessionLocal()
-    try:
-        empty = database_is_empty(db)
-    finally:
-        db.close()
-    if empty:
-        summary = run_seed()
-        print(f"Auto-seed complete: {summary}")
+    Accepts explicit settings so the test harness can construct an app against a test
+    database without mutating the process environment.
+    """
+    config = settings or get_settings()
+    configure_logging(level=config.log_level, log_format=config.log_format, sql_echo=config.db_echo)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        """Startup and shutdown.
+
+        Deliberately does **not** create or migrate the schema. §10 of the brief forbids
+        destructive automatic migrations, and creating tables implicitly would let a
+        deployment drift from its Alembic history. Schema changes are an explicit
+        `alembic upgrade head` step (see docs/DATABASE.md).
+        """
+        # Bind the process database handle to *this* application's settings, so an app
+        # built for a test or a job never talks to the database named in the ambient .env.
+        configure_engine(create_db_engine(config))
+        logger.info(
+            "application starting",
+            extra={
+                "environment": config.environment.value,
+                "version": __version__,
+                "oidc_enabled": config.oidc_enabled,
+                "storage_backend": config.storage_backend,
+            },
+        )
+        if not check_connection():
+            # A failing probe is logged, not fatal: the readiness endpoint reports it and the
+            # orchestrator decides. Crashing on a transient database blip would turn a
+            # recoverable condition into an outage.
+            logger.error("database is not reachable at startup")
+        yield
+        dispose_engine()
+        logger.info("application stopped")
+
+    app = FastAPI(
+        title="Employee Management System API",
+        version=__version__,
+        description=DESCRIPTION,
+        lifespan=lifespan,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+        # Our handlers own the envelope; FastAPI's default 422 shape would bypass §24.2.
+        responses={},
+    )
+
+    # Dependencies resolve settings from here, so an app built with explicit settings is
+    # self-contained and never reads the ambient environment mid-request.
+    app.state.settings = config
+
+    if config.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=config.cors_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "If-Match",
+                "Idempotency-Key",
+                "X-Request-Id",
+            ],
+            expose_headers=["ETag", "X-Request-Id"],
+            max_age=600,
+        )
+
+    # Outermost first: correlation context must be bound before anything else logs, and
+    # security headers must be applied to every response including error responses.
+    app.add_middleware(SecurityHeadersMiddleware, api_prefix=config.api_prefix)
+    app.add_middleware(RequestContextMiddleware, api_prefix=config.api_prefix)
+
+    register_exception_handlers(app)
+    declare_error_responses(app, config.api_prefix)
+    _register_operational_routes(app)
+    app.include_router(api_router, prefix=config.api_prefix)
+    return app
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    # For local/dev and tests we create tables if missing. Production should use
-    # Alembic migrations instead.
-    init_db()
-    _maybe_auto_seed()
-    yield
+def _register_operational_routes(app: FastAPI) -> None:
+    """Liveness and readiness probes (§18 of the brief: no secrets exposed)."""
+
+    @app.get(
+        "/health",
+        tags=["Operations"],
+        summary="Liveness probe",
+        response_model=HealthResponse,
+    )
+    def health() -> HealthResponse:
+        """Report that the process is running. Performs no I/O and reveals no configuration."""
+        return HealthResponse()
+
+    @app.get(
+        "/ready",
+        tags=["Operations"],
+        summary="Readiness probe",
+        response_model=ReadinessResponse,
+    )
+    def ready() -> ReadinessResponse:
+        """Report whether the database is reachable.
+
+        Returns 200 with ``status: degraded`` rather than a 5xx, so a load balancer sees a
+        definite answer and the body says which dependency is at fault — without disclosing
+        a host, version or connection string.
+        """
+        database_up = check_connection()
+        return ReadinessResponse(
+            status="ready" if database_up else "degraded",
+            database="up" if database_up else "down",
+        )
 
 
-app = FastAPI(
-    title=settings.app_name,
-    version=__version__,
-    description="Keka-style HR & Payroll suite REST API.",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins or ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-register_exception_handlers(app)
-app.add_middleware(IdempotencyMiddleware)
-app.include_router(api_router, prefix=settings.api_prefix)
-
-
-@app.get("/", tags=["Meta"], summary="Service root")
-def root() -> dict:
-    return {
-        "data": {
-            "name": settings.app_name,
-            "version": __version__,
-            "docs": "/docs",
-            "api_prefix": settings.api_prefix,
-        },
-        "meta": None,
-        "errors": None,
-    }
-
-
-@app.get("/health", tags=["Meta"], summary="Health check")
-def health() -> dict:
-    return {
-        "data": {"status": "ok", "database": "up" if check_connection() else "down"},
-        "meta": None,
-        "errors": None,
-    }
+# No module-level `app` instance. Building the application at import time would make
+# importing anything from this module read and validate the environment as a side effect,
+# which breaks test collection and job entrypoints that supply their own settings. Run the
+# server against the factory instead:
+#
+#     uvicorn app.main:create_app --factory
+#
+# See docs/DEPLOYMENT.md for the production command.

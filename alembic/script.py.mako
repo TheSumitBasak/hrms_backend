@@ -3,11 +3,22 @@
 Revision ID: ${up_revision}
 Revises: ${down_revision | comma,n}
 Create Date: ${create_date}
+
+Review checklist before committing this revision (docs/DATABASE.md):
+  * MySQL DDL is not transactional — a failure leaves the schema partly changed.
+  * Autogenerate does not reliably emit data migrations or constraint renames.
+  * Confirm that stored generated columns and FULLTEXT indexes survived generation.
+  * Confirm the downgrade is correct, or state explicitly why it is not reversible.
 """
+
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
+
+# The EMS schema uses custom column types (UUIDv7 as BINARY(16), UTC DATETIME(6)), which
+# autogenerate renders as `app.db.types.X()`. Imported here so every revision is runnable.
+import app.db.types
 ${imports if imports else ""}
 
 revision: str = ${repr(up_revision)}

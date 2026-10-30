@@ -1,1 +1,1 @@
-"""API package."""
+"""EMS api layer."""

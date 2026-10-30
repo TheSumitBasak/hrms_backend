@@ -1,27 +1,48 @@
-# MySQL 8 for local development.
+# Local MySQL 8 for EMS development.
+#
 #   docker compose up -d
-# Matches the default DATABASE_URL:
-#   mysql+pymysql://root:admin@127.0.0.1:3306/hrms?charset=utf8mb4
+#   python scripts/create_databases.py
+#   alembic upgrade head
+#
+# Development only. It sets a weak root password on purpose so it can never be mistaken for a
+# production definition, and it binds to localhost only. Production databases are provisioned
+# outside this repository; see docs/DEPLOYMENT.md.
+#
+# If a MySQL 8 server is already running on 3306 (a native service, for example), skip this
+# file entirely and point DATABASE_URL at that server.
+
 services:
   mysql:
-    image: mysql:8.0
-    container_name: hrms-mysql
+    image: mysql:8.4
+    container_name: ems-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: admin
-      MYSQL_DATABASE: hrms
+      # Local-only credentials. Never reuse these anywhere that matters.
+      MYSQL_ROOT_PASSWORD: ems-local-dev
+      MYSQL_DATABASE: ems
     ports:
-      - "3306:3306"
+      # Bound to the loopback interface so the container is not reachable off-host.
+      - "127.0.0.1:3307:3306"
     command:
       - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
+      - --collation-server=utf8mb4_0900_ai_ci
+      # Match the production expectations the application relies on, so local behaviour is
+      # not more forgiving than deployed behaviour:
+      #   READ-COMMITTED  — §18.8 requires it for the salary-timeline overlap check
+      #   STRICT_ALL_TABLES — without it MySQL truncates instead of raising
+      #   sql_require_primary_key — every EMS table declares a UUID primary key (DEC-042)
+      - --transaction-isolation=READ-COMMITTED
+      - --sql-mode=STRICT_ALL_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_ZERO_DATE,NO_ZERO_IN_DATE
+      - --sql-require-primary-key=ON
+      # Keeps the ~2s first-connection cost of reverse DNS lookups out of local runs (DEC-044).
+      - --skip-name-resolve
     volumes:
-      - hrms_mysql_data:/var/lib/mysql
+      - ems_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-padmin"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pems-local-dev"]
       interval: 5s
       timeout: 5s
       retries: 20
 
 volumes:
-  hrms_mysql_data:
+  ems_mysql_data:

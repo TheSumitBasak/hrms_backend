@@ -1,128 +1,55 @@
-"""Import every model so that SQLAlchemy's registry is fully populated."""
-from app.models.base import IDMixin, TimestampMixin, utcnow
-from app.models.organization import (
-    CostCenter,
-    Department,
-    Designation,
-    LegalEntity,
-    Location,
-    Organization,
-)
-from app.models.auth import Permission, Role, RolePermission, User, UserRole
-from app.models.employee import (
-    DocumentTemplate,
-    DocumentType,
-    Employee,
-    EmployeeBankDetail,
-    EmployeeDocument,
-    EmployeeJobHistory,
-    EmployeePersonalDetail,
-    EmployeeStatutoryDetail,
-)
-from app.models.payroll import (
-    PayGroup,
-    PayrollRun,
-    PayrollRunEmployee,
-    Payslip,
-    PayslipLine,
-    SalaryComponent,
-    SalaryRevision,
-    SalaryStructure,
-    SalaryStructureComponent,
-    EmployeeSalary,
-    StatutorySetting,
-)
-from app.models.tax import TaxDeclaration, TaxProof
-from app.models.expense import ExpenseClaim, ExpenseClaimLine, ExpensePolicy
-from app.models.loan import Loan, LoanPolicy, LoanRepayment
-from app.models.leave import LeaveBalance, LeaveRequest, LeaveType
-from app.models.attendance import AttendanceRecord, Holiday, Shift
-from app.models.lifecycle import (
-    Asset,
-    AssetAssignment,
-    EmployeeOnboarding,
-    ExitRequest,
-    ExitTask,
-    OnboardingTask,
-    OnboardingTemplate,
-)
-from app.models.workflow import (
-    Approval,
-    AuditLog,
-    HelpdeskTicket,
-    Notification,
-    Workflow,
-    WorkflowStep,
-)
-from app.models.currency import CurrencyRate, DisplayCurrencyPreference
-from app.models.integration import Integration
-from app.models.user_pref import ReportSchedule, TenantSetting, UserPreference
+"""SQLAlchemy ORM models.
 
-__all__ = [
-    "IDMixin",
-    "TimestampMixin",
-    "utcnow",
-    "Organization",
-    "LegalEntity",
-    "Location",
-    "Department",
-    "Designation",
-    "CostCenter",
-    "User",
-    "Role",
-    "UserRole",
-    "Permission",
-    "RolePermission",
-    "Employee",
-    "EmployeePersonalDetail",
-    "EmployeeJobHistory",
-    "EmployeeBankDetail",
-    "EmployeeStatutoryDetail",
-    "DocumentType",
-    "EmployeeDocument",
-    "DocumentTemplate",
-    "PayGroup",
-    "SalaryStructure",
-    "SalaryComponent",
-    "SalaryStructureComponent",
-    "EmployeeSalary",
-    "SalaryRevision",
-    "PayrollRun",
-    "PayrollRunEmployee",
-    "Payslip",
-    "PayslipLine",
-    "StatutorySetting",
-    "TaxDeclaration",
-    "TaxProof",
-    "ExpensePolicy",
-    "ExpenseClaim",
-    "ExpenseClaimLine",
-    "LoanPolicy",
-    "Loan",
-    "LoanRepayment",
-    "LeaveType",
-    "LeaveBalance",
-    "LeaveRequest",
-    "AttendanceRecord",
-    "Shift",
-    "Holiday",
-    "OnboardingTemplate",
-    "OnboardingTask",
-    "EmployeeOnboarding",
-    "ExitRequest",
-    "ExitTask",
-    "Asset",
-    "AssetAssignment",
-    "HelpdeskTicket",
-    "Workflow",
-    "WorkflowStep",
-    "Approval",
-    "Notification",
-    "AuditLog",
-    "CurrencyRate",
-    "DisplayCurrencyPreference",
-    "Integration",
-    "UserPreference",
-    "ReportSchedule",
-    "TenantSetting",
-]
+Model modules are imported through :func:`import_all_models` rather than at package import
+time. Several tables carry mutual references — ``users.employee_id`` points at ``employees``
+while every business table's ``created_by`` points back at ``users`` — so eager imports at
+package level would create an import cycle. Deferring the imports into one function keeps the
+registration order explicit and gives Alembic a single call to populate
+``Base.metadata``.
+
+Every module listed here must be present for autogenerate to be correct: a module that is
+not imported is a table Alembic cannot see, and it would generate a migration that drops it.
+"""
+
+from __future__ import annotations
+
+from importlib import import_module
+
+MODEL_MODULES: tuple[str, ...] = (
+    "reference",  # states and GST state codes
+    "platform",  # users, roles, permissions, refresh tokens, idempotency keys
+    "organization",  # groups, organizations, settings, organization files
+    "access",  # organization access grants, per-organization permission overrides
+    "audit",  # append-only audit log, integrity findings
+    "branch",  # branches
+    "master",  # nine masters, lookup values, custom statuses
+    "employee",  # employees, addresses, job history, status history
+    "identifier",  # encrypted identifiers with blind indexes
+    "profile",  # education, previous employment, family, nominees, bank accounts
+    "document",  # document categories and employee documents
+    "salary",  # components, templates, assignments, revision history
+    "org_config",  # registrations, identifier and nomination policies, notice versions
+    "employee_code",  # ID rules, sequence counters, code registry
+    "privacy",  # notices, change requests, erasure requests, purge batches
+    "position",  # job architecture, positions, assignments, headcount
+    "attendance",  # work schedules, shifts, punches, daily records (addendum §5)
+    "leave",  # leave types, policies, ledger, balances, applications; job runs (addendum §6, §14)
+    "onboarding",  # templates, instances, tasks, submissions (addendum §4)
+)
+"""Module names under ``app.models``, in dependency order.
+
+Populated as each domain module lands; see ``docs/IMPLEMENTATION_CHECKLIST.md``.
+"""
+
+
+def import_all_models() -> None:
+    """Import every model module so ``Base.metadata`` is complete.
+
+    Idempotent: repeated calls are cheap because :func:`importlib.import_module` returns the
+    cached module.
+    """
+    for module_name in MODEL_MODULES:
+        import_module(f"app.models.{module_name}")
+
+
+__all__ = ["MODEL_MODULES", "import_all_models"]

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "fastapi-architect": {
+      "source": "ghalex/skills",
+      "sourceType": "github",
+      "skillPath": "fastapi-architect/SKILL.md",
+      "computedHash": "9ad84d7dfea98c4295814279ec6f78d423f593ee6a260ebae00aa609d43678f9"
+    },
+    "fastapi-rules": {
+      "source": "ghalex/skills",
+      "sourceType": "github",
+      "skillPath": "fastapi-rules/SKILL.md",
+      "computedHash": "3abc019991b83e2c3edbdedf083472b1f367be4ab79999ac17134cb9c82185fa"
+    }
+  }
+}

@@ -1,1 +1,1 @@
-"""Core infrastructure: config, database, security, errors, dependencies."""
+"""EMS core layer."""
