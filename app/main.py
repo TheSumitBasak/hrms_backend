@@ -10,21 +10,26 @@ Routers are mounted from :mod:`app.api.router` as each domain module lands; see
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import __version__
 from app.api.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.api.openapi import declare_error_responses
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
+from app.core.errors import EmsError
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging
 from app.db.session import check_connection, configure_engine, create_db_engine, dispose_engine
+from app.demo import runner
+from app.demo.seeder import DemoSeedError
 from app.schemas.common import HealthResponse, ReadinessResponse
 
 logger = logging.getLogger(__name__)
@@ -45,6 +50,19 @@ cursor pagination. Errors use a single envelope with a stable machine-readable c
 """
 
 
+async def _auto_seed(app: FastAPI, config: Settings) -> None:
+    """Load the demo organization (``AUTO_SEED=true``). A failure is logged, not fatal."""
+    try:
+        report = await asyncio.to_thread(runner.run_auto_seed, app, config)
+    except (DemoSeedError, EmsError, SQLAlchemyError):
+        logger.exception("AUTO_SEED failed; the application continues without demo data")
+        return
+    logger.info(
+        "AUTO_SEED finished",
+        extra={"seeded": report.seeded, "skip_reason": report.skip_reason, **report.counts},
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the ASGI application.
 
@@ -55,7 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(level=config.log_level, log_format=config.log_format, sql_echo=config.db_echo)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         """Startup and shutdown.
 
         Deliberately does **not** create or migrate the schema. §10 of the brief forbids
@@ -80,6 +98,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # orchestrator decides. Crashing on a transient database blip would turn a
             # recoverable condition into an outage.
             logger.error("database is not reachable at startup")
+        elif config.auto_seed:
+            await _auto_seed(app, config)
         yield
         dispose_engine()
         logger.info("application stopped")

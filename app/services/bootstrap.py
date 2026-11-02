@@ -53,8 +53,10 @@ BOOTSTRAP_ROLES: tuple[Role, ...] = (
     Role.SYSTEM_SUPER_ADMIN,
     Role.ORGANIZATION_ADMIN,
     Role.HR_ADMIN,
+    # Sole holder of ATTENDANCE_IMPORT; without it the "all access" admin cannot import punches.
+    Role.ATTENDANCE_INTEGRATION_CLIENT,
 )
-"""The three roles whose union is every permission in the §5.3 matrix.
+"""The roles whose union is every permission in the §5.3 matrix except the ``SELF_*`` cells.
 
 Asserted by ``tests/unit/test_bootstrap.py``: if a future permission is added to the enum
 without landing in one of these roles, that test fails rather than this module quietly

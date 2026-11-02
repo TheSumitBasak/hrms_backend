@@ -168,6 +168,18 @@ because statement logs include bound parameters.
 Read **only** by `python -m app.cli seed` and `python -m app.cli bootstrap`, never in the
 request path. All three must be set, or nothing happens.
 
+### Demo data (development only)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `AUTO_SEED` | `false` | `true` loads the demo organization "Bharat Tech Solutions" at startup, once (also `python -m app.cli seed-demo`). Refused in staging/production |
+
+The loader drives the application's own API in-process, so the data obeys every business rule.
+It seeds the platform reference data first, runs the bootstrap when `SEED_ADMIN_*` are set and
+grants that administrator access to the demo organization. Demo accounts use `SEED_ADMIN_PASSWORD`
+(or `Demo@Bharat2026`); `seed-demo` prints the sign-in list. Needs the dev extras (`httpx`).
+A failure at startup is logged and does not stop the application.
+
 The bootstrap acts only on a database that holds **no users and no organizations**. There it
 creates one organization, its §24.4.1 seed data, one `LOCAL` user and three
 `user_organization_access` rows — SSA, OA and HRA, whose union is every permission in the

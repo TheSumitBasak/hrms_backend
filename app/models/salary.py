@@ -2,13 +2,12 @@
 
 Covers §16, §17 and §18.
 
-**Scope boundary.** Salary data is stored for record-keeping only. §4.3 forbids computing or
-storing net pay, gross totals, sums of components, deductions, tax, statutory contributions,
-gratuity, leave encashment, arrears, deltas, percentage increases, projections and
-cost-to-company. Nothing in this module or its services performs arithmetic over a stored
-value. ``PERCENTAGE`` component values are **labels**: §16.2 and §4.3 both state they must
-never be applied to a base amount, so there is deliberately no column linking a percentage to
-the thing it might be a percentage of.
+**Scope boundary.** Salary data is stored for record-keeping. §4.3 forbids computing or
+storing net pay, gross totals, sums of components, tax, statutory contributions, gratuity,
+leave encashment, arrears, deltas, projections and cost-to-company. The one permitted
+calculation is a ``PERCENTAGE`` component's own amount: ``percentage x Basic``, resolved when
+an assignment is saved and stored in ``computed_amount``. Nothing else is derived from stored
+values.
 
 **Immutability.** A confirmed assignment's values and snapshots never change (INV-5). A
 correction does not edit them — it cancels the assignment and inserts a replacement (§18.5),
@@ -62,6 +61,21 @@ class ComponentCategory(StrEnum):
     EMPLOYER_BENEFIT = "EMPLOYER_BENEFIT"
     EMPLOYEE_DEDUCTION_REFERENCE = "EMPLOYEE_DEDUCTION_REFERENCE"
     OTHER = "OTHER"
+
+
+class ComponentType(StrEnum):
+    """Whether a component adds to (EARNING) or is taken from (DEDUCTION) the employee's pay.
+
+    A label for grouping and display only; nothing totals or nets the two groups.
+    """
+
+    EARNING = "EARNING"
+    DEDUCTION = "DEDUCTION"
+
+
+BASIC_COMPONENT_CODE = "BASIC"
+"""The reserved code of the system component every template and assignment carries. A
+``PERCENTAGE`` component is a percentage **of this component's amount**."""
 
 
 class ValueType(StrEnum):
@@ -237,6 +251,9 @@ class SalaryComponent(Base, StandardColumns):
             "OR (value_type <> 'OTHER_CONFIGURED')",
             name="ck_salary_components_validation_regex",
         ),
+        CheckConstraint(
+            "component_type IN ('EARNING','DEDUCTION')", name="ck_salary_components_type"
+        ),
         CheckConstraint("display_order >= 0", name="ck_salary_components_display_order"),
         CheckConstraint(
             "default_value_amount IS NULL OR default_value_amount >= 0",
@@ -260,7 +277,20 @@ class SalaryComponent(Base, StandardColumns):
         String(30), Computed("UPPER(component_code)", persisted=True), nullable=False
     )
     component_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    """Renaming is allowed and does not affect snapshots (§16.3, E-14)."""
+    """The internal name administrators use to tell components apart. Renaming is allowed and
+    does not affect snapshots (§16.3, E-14)."""
+
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    """What the employee sees (payslip, salary view)."""
+
+    component_type: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=ComponentType.EARNING.value, server_default="EARNING"
+    )
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    """True only for Basic: it is seeded with the organization and can be neither deactivated
+    nor retyped."""
 
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     component_category: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -702,6 +732,10 @@ class EmployeeSalaryComponent(Base, StandardColumns):
             "value_type <> 'FIXED_AMOUNT' OR currency IS NOT NULL",
             name="ck_employee_salary_components_currency_required",
         ),
+        CheckConstraint(
+            "component_type_snapshot IN ('EARNING','DEDUCTION')",
+            name="ck_employee_salary_components_type",
+        ),
         archive_reason_constraint("employee_salary_components"),
         Index(
             "ix_employee_salary_components_assignment",
@@ -715,6 +749,10 @@ class EmployeeSalaryComponent(Base, StandardColumns):
 
     component_code_snapshot: Mapped[str] = mapped_column(String(30), nullable=False)
     component_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    display_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    component_type_snapshot: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=ComponentType.EARNING.value, server_default="EARNING"
+    )
     component_category_snapshot: Mapped[str] = mapped_column(String(40), nullable=False)
     value_type: Mapped[str] = mapped_column(String(20), nullable=False)
     amount_period_snapshot: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -722,7 +760,11 @@ class EmployeeSalaryComponent(Base, StandardColumns):
     # §16.2 typed value group: the employee's value.
     value_amount: Mapped[Decimal | None] = mapped_column(money(), nullable=True)
     value_percentage: Mapped[Decimal | None] = mapped_column(percentage_column(), nullable=True)
-    """A stored label. §4.3: never applied to a base amount."""
+    """For ``PERCENTAGE``: the percentage **of Basic**."""
+
+    computed_amount: Mapped[Decimal | None] = mapped_column(money(), nullable=True)
+    """For ``PERCENTAGE``: ``value_percentage x Basic`` frozen at save time, so a later change
+    to anything else cannot move it. Null for every other value type."""
 
     value_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
     value_boolean: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

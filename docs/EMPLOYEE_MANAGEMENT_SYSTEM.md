@@ -8,6 +8,7 @@
 | Date | 2026-10-28 |
 | Target market | Organizations operating in India (multi-organization deployment) |
 | Status | Source of truth for development; items in §29 require business/legal sign-off |
+| Amendments | 2026-11-01: salary template builder support (§16.7, §24.4.6), ISO 4217 currency validation (§16.4, §16.5), component usage counts (§16.3), first-administrator grant set (§5.3 note 5). See SYSTEM_LIMITATIONS.md for the review that prompted them. |
 
 ---
 
@@ -223,7 +224,7 @@ Targets marked **[ASSUMPTION]** must be confirmed by the product owner before go
 | Notifications/workflow engines (email/SMS reminders) | Expiry flags shown in UI only (§15.8) |
 
 ### 4.3 Computation Guardrails
-The system MUST NOT compute, store as derived values, or display any of the following: net pay, gross pay totals, sums of components, deductions, tax, employer/employee statutory contributions, gratuity amounts, leave encashment, salary arrears, salary deltas or percentage increases, projected salary, or cost-to-company reconciliations. Percentage-type component values are stored labels only and MUST NOT be applied to any base amount.
+The system MUST NOT compute, store as derived values, or display any of the following: net pay, gross pay totals, sums of components, deductions, tax, employer/employee statutory contributions, gratuity amounts, leave encashment, salary arrears, salary deltas or percentage increases, projected salary, or cost-to-company reconciliations. [CHG 2026-11-02] One calculation is permitted: a PERCENTAGE salary component is a percentage **of Basic**, and its own amount (`percentage x Basic`, rounded half-up to 2 dp) is resolved when a salary assignment is saved and stored in `computed_amount` (§16.3, §17.2). Percentages are never applied to any other base, and no component is ever added to, subtracted from or netted against another. Totals, gross, net and cost-to-company remain prohibited.
 
 ---
 
@@ -1270,7 +1271,9 @@ SALARY_* categories additionally require salary.view to list or download. Organi
 
 ## 16. Dynamic Salary Structure Templates
 
-Salary data is stored for record-keeping and historical reference only. The system MUST NOT calculate payroll, deductions, tax, net pay, totals or statutory contributions (§4.3).
+Salary data is stored for record-keeping and historical reference. The system MUST NOT calculate payroll, tax, net pay, totals or statutory contributions (§4.3). The only calculation is a PERCENTAGE component's own amount as a percentage of Basic (§16.3).
+
+[CHG 2026-11-02] **Structure in one paragraph.** A *salary component* is one step of a salary structure (Basic, HRA, PF …). Each has an internal `component_name`, an employee-facing `display_name`, a `component_type` (EARNING = receivable, DEDUCTION = deductible) and a calculation `value_type` (FIXED_AMOUNT, or PERCENTAGE = % of Basic). **Basic** is a system component: seeded with every organization, always present, never deletable. A *template* is a versioned selection of components with defaults; Basic is added automatically and the user supplies only its amount. A component such as HRA 15% can be created from the template screen and added to the template. An employee's salary can come from a template or from catalogue components picked directly; either way the values are **copied** into the assignment (§17.2), so later changes to a component or template never alter an employee's stored salary.
 
 ### 16.1 Model
 `salary_components` (organization catalog) → `salary_templates` (header) → `salary_template_versions` (versioned, immutable once published) → `salary_template_components` (mapping rows per version) → employee assignments snapshot values (§17).
@@ -1281,7 +1284,7 @@ Wherever a field is described as a "typed value" (`default_value`, `value`), the
 | Field | Data Type | Required? | Validation / Constraints | Example | Notes |
 |---|---|---|---|---|---|
 | value_amount | DECIMAL(15,2) | C | Used when value_type = FIXED_AMOUNT; ≥ 0 | 600000.00 | |
-| value_percentage | DECIMAL(7,4) | C | Used when value_type = PERCENTAGE; 0–100 | 40.0000 | Stored label only; never applied |
+| value_percentage | DECIMAL(7,4) | C | Used when value_type = PERCENTAGE; 0–100 | 40.0000 | [CHG 2026-11-02] Percentage **of Basic** |
 | value_text | VARCHAR(500) | C | Used when value_type = TEXT or OTHER_CONFIGURED; OTHER_CONFIGURED validated by component validation_regex | As per policy | |
 | value_boolean | BOOLEAN | C | Used when value_type = BOOLEAN | true | |
 
@@ -1293,13 +1296,16 @@ CHECK: at most the single column matching value_type is non-null; all others nul
 |---|---|---|---|---|---|
 | id | UUID | SYS | PK | | |
 | organization_id | UUID | M | FK | | |
-| component_code | VARCHAR(30) | M | V-CODE; unique per organization; immutable | BASIC | |
-| component_name | VARCHAR(100) | M | 2–100 | Basic Salary | Renames do not affect snapshots |
+| component_code | VARCHAR(30) | M | V-CODE; unique per organization; immutable; `BASIC` is reserved for the system Basic component | HRA | |
+| component_name | VARCHAR(100) | M | 2–100 | House Rent Allowance (Metro) | [CHG 2026-11-02] Internal name that tells components apart. Renames do not affect snapshots |
+| display_name | VARCHAR(100) | M | 2–100; defaults to component_name when omitted on create | HRA | [CHG 2026-11-02] What the employee sees. Renames do not affect snapshots |
+| component_type | ENUM | M | EARNING (receivable), DEDUCTION (deductible); default EARNING; immutable | EARNING | [CHG 2026-11-02] Grouping label; nothing totals or nets the groups |
+| is_system | BOOLEAN | SYS | True only for Basic | false | [CHG 2026-11-02] A system component cannot be deactivated, retyped or have its calculation changed; only names, description and display order are editable |
 | description | VARCHAR(500) | O | | | |
 | component_category | ENUM | M | EARNINGS, ALLOWANCE, EMPLOYER_BENEFIT, EMPLOYEE_DEDUCTION_REFERENCE, OTHER | EARNINGS | |
 | value_type | ENUM | M | FIXED_AMOUNT, PERCENTAGE, TEXT, BOOLEAN, OTHER_CONFIGURED; immutable once used in any version or assignment | FIXED_AMOUNT | |
 | amount_period | ENUM | C | Required when value_type = FIXED_AMOUNT: ANNUAL, MONTHLY, ONE_TIME; else NOT_APPLICABLE | ANNUAL | Prevents monthly/annual ambiguity |
-| percentage_reference_label | VARCHAR(100) | O | Allowed only for PERCENTAGE | % of Basic | Display label only |
+| percentage_reference_label | VARCHAR(100) | O | Allowed only for PERCENTAGE; defaults to `% of Basic` | % of Basic | Display label; the base is always Basic |
 | validation_regex | VARCHAR(200) | C | Required for OTHER_CONFIGURED; must compile; max 200 chars | `^[A-Z]{2}$` | |
 | default_value | typed value (§16.2) | O | Must match value_type | 0.00 | |
 | currency | CHAR(3) | C | Required for FIXED_AMOUNT; ISO 4217; default organization currency | INR | |
@@ -1309,7 +1315,9 @@ CHECK: at most the single column matching value_type is non-null; all others nul
 | status | ENUM | M | ACTIVE, INACTIVE | ACTIVE | Inactive components cannot be added to new versions/assignments |
 | created_at, updated_at | | SYS | Plus other standard columns | | |
 
-Seed suggestions (not hard-coded; OA may delete before use): ANNUAL_CTC, BASIC, DA, HRA, SPECIAL_ALLOWANCE, CONVEYANCE, LTA, MEDICAL_ALLOWANCE, OTHER_ALLOWANCE, VARIABLE_PAY_REF, EMPLOYER_PF_REF, EMPLOYER_ESIC_REF, GRATUITY_REF.
+[CHG 2026-11-02] **Basic.** Organization creation (API, bootstrap and demo seed) and the Alembic migration seed one component per organization: code `BASIC`, name/display name "Basic", EARNING, FIXED_AMOUNT, MONTHLY, organization currency, `is_required = true`, `is_system = true`. It is the base of every PERCENTAGE component. Attempts to deactivate it, create another `BASIC`, or change anything beyond its names/description/order are rejected (422 / 409).
+
+Other seed suggestions (not hard-coded; OA may delete before use): ANNUAL_CTC, DA, HRA, SPECIAL_ALLOWANCE, CONVEYANCE, LTA, MEDICAL_ALLOWANCE, OTHER_ALLOWANCE, VARIABLE_PAY_REF, EMPLOYER_PF_REF, EMPLOYER_ESIC_REF, GRATUITY_REF.
 
 ### 16.4 Salary Templates (`salary_templates`, header)
 
@@ -1355,10 +1363,16 @@ Seed suggestions (not hard-coded; OA may delete before use): ANNUAL_CTC, BASIC, 
 | effective_to | DATE | O | > effective_from; exclusive; ≤ version effective_to | | |
 
 ### 16.7 Template Rules
+- [CHG 2026-11-02] Every version contains Basic. It is added automatically when a template is created, when mappings are replaced without it, and when a new version is copied from one that lacks it. Its `default_value_amount` may be left empty and supplied per employee. A PERCENTAGE mapping's default is a percentage of Basic.
+- [CHG 2026-11-02] A new component (for example HRA, PERCENTAGE 15) is created with `POST …/salary-components` from the template builder and then included in the version's mappings; there is no separate inline-create endpoint.
 - DRAFT versions are fully editable. ACTIVE versions are immutable except `effective_to` (set by publishing a later version) and archival.
 - "Editing" an ACTIVE template creates a new DRAFT version copying all mappings (`POST …/salary-templates/{id}/versions`).
 - Publishing version n with effective_from F: F must be ≥ previous version's effective_from + 1 day; the previous ACTIVE version's effective_to becomes F. Versions of one template never overlap (DB exclusion constraint).
 - A template change never alters existing employee assignments; it affects only new assignments and explicitly initiated revisions.
+- [CHG 2026-11-01] Every version of a template can be listed and read back, including DRAFT and ARCHIVED ones, so a client never has to hold a draft only in memory (`GET …/salary-templates/{id}/versions`, `GET …/versions/{vid}`).
+- [CHG 2026-11-01] Publish may carry the builder's unsaved state (`currency`, `effective_from`, `change_note`, `mappings`). It is applied to the DRAFT and published in one transaction; if publishing fails (for example the version overlaps an ACTIVE one), the edits are rolled back with it. An omitted field keeps its stored value; `mappings: []` clears the mappings and an omitted `mappings` keeps them.
+- [CHG 2026-11-01] Currency codes on components, template versions and templates must be active ISO 4217 codes. A well-formed but unknown code (for example `XXX`) returns `422`. Other modules' currency fields are unchanged.
+- [CHG 2026-11-01] `GET …/salary-components/{id}/usage` returns `template_version_count` and `assignment_count` so an administrator can see the impact before deactivating a component. Deactivation itself is unchanged.
 - Archived templates (or ARCHIVED versions) cannot be newly assigned (`422 TEMPLATE_ARCHIVED`) but remain readable in history.
 - Duplicate component mappings within one version are prohibited (unique constraint).
 - No component list is hard-coded; required components are defined per template.
@@ -1424,10 +1438,13 @@ Seed suggestions (not hard-coded; OA may delete before use): ANNUAL_CTC, BASIC, 
 | component_id | UUID | O | Composite FK salary_components (same org); null for custom components | | |
 | component_code_snapshot | VARCHAR(30) | M [H] | For custom: V-CODE, unique within assignment, must not equal an existing org component code | BASIC | |
 | component_name_snapshot | VARCHAR(100) | M [H] | | Basic Salary | |
+| display_name_snapshot | VARCHAR(100) | M [H] | [CHG 2026-11-02] Custom components default to their name | Basic | The employee-facing label as it was at assignment time |
+| component_type_snapshot | ENUM | M [H] | EARNING, DEDUCTION [CHG 2026-11-02] | EARNING | |
 | component_category_snapshot | ENUM | M [H] | As §16.3 | EARNINGS | |
 | value_type | ENUM | M [H] | As §16.3 | FIXED_AMOUNT | |
 | amount_period_snapshot | ENUM | C [H] | Required for FIXED_AMOUNT | ANNUAL | |
 | value | typed value | C | Required if mapping is_required; type must match value_type | 720000.00 | |
+| computed_amount | DECIMAL(15,2) | C [H] | [CHG 2026-11-02] Set only for PERCENTAGE: `value_percentage x Basic value`, rounded half-up to 2 dp, frozen at save time; null otherwise | 6000.00 | Basic's own `value_amount` is required in every assignment |
 | template_default_snapshot | typed value | O [H] | Template default at assignment time | 600000.00 | For override display |
 | currency | CHAR(3) | C | Required for FIXED_AMOUNT; = assignment currency | INR | |
 | is_overridden | BOOLEAN | SYS | True when value ≠ template default (or no template mapping) | true | |
@@ -1444,7 +1461,7 @@ Unique: `(salary_assignment_id, component_code_snapshot)`.
 |---|---|
 | Create from template | Select template; system resolves the version effective on effective_from (error `TEMPLATE_VERSION_NOT_EFFECTIVE` if none) and pre-fills mappings applicable on that date with defaults. |
 | Override | Allowed only if mapping.is_overridable and component.is_editable_per_employee; otherwise value must equal the template default (error `COMPONENT_NOT_OVERRIDABLE`). |
-| Add custom component | Requires salary.custom_component and organization allow_custom_salary_components = true. |
+| Add custom component | Requires salary.custom_component and organization allow_custom_salary_components = true. [CHG 2026-11-02] Applies only to ad-hoc components with no catalogue entry; picking catalogue components directly (no template) needs only `salary.revision_create`. Every assignment must include Basic with an amount (`BASIC_REQUIRED`); `BASIC` cannot be used as a custom code. |
 | Remove template component | Allowed only for mappings with is_required = false (component omitted from assignment). |
 | Edit DRAFT | Fully editable by creator or HRA. |
 | Confirm | Places the assignment in the timeline per §18.3 (requires salary.revision_confirm; and APPROVED if approval required). |
@@ -1487,7 +1504,7 @@ The UI and API MUST support:
 - Current structure (as-of today).
 - Structure as-of any date (`as_of` parameter).
 - Historical structures (EXPIRED), scheduled future structures (SCHEDULED), and optionally cancelled ones (`include_cancelled=true`).
-- Comparison of any two assignments of the same employee: per component code, values side by side with change_type (ADDED, REMOVED, CHANGED, UNCHANGED) and override flags. **No totals, differences, percentages or take-home values are calculated** (§4.3).
+- Comparison of any two assignments of the same employee: per component code, values side by side with change_type (ADDED, REMOVED, CHANGED, UNCHANGED) and override flags. **No totals, differences or take-home values are calculated; the only computed figure is a PERCENTAGE component's own `computed_amount`** (§4.3).
 - Display of template default vs employee-specific value for each component.
 - Filtering history by effective_from range and status.
 - Opening the revision letter document (subject to document permissions).
@@ -2161,14 +2178,17 @@ Paths below are relative to `/api/v1`. "Org" = `/orgs/{orgId}`. Request/response
 
 | Method | Path | Purpose | Permission | Request | Response | Key validations / errors |
 |---|---|---|---|---|---|---|
-| GET / POST / PATCH | Org/salary-components[/{id}] | Component catalog | salary.view / salary.template_manage | §16.3 | Components | value_type immutable once used |
-| POST | Org/salary-components/{id}/deactivate | Deactivate | salary.template_manage | reason | Component | |
+| GET / POST / PATCH | Org/salary-components[/{id}] | Component catalog | salary.view / salary.template_manage | §16.3 [CHG 2026-11-02: `display_name`, `component_type` on create; `display_name` on patch; responses add `display_name`, `component_type`, `is_system`] | Components | value_type and component_type immutable; Basic (`is_system`) editable by name only; `BASIC` code reserved |
+| GET | Org/salary-components/{id}/usage | [NEW] Template-version and assignment counts | salary.view / salary.template_manage | — | template_version_count, assignment_count | 404 unknown component |
+| POST | Org/salary-components/{id}/deactivate | Deactivate | salary.template_manage | reason | Component | 422 for the system Basic component |
 | GET / POST | Org/salary-templates | List / create template with draft v1 | salary.view / salary.template_manage | §16.4 + §16.5 + mappings | Template + version | Unique code; mapping rules |
 | GET / PATCH | Org/salary-templates/{tid} | Read / edit header | salary.view / salary.template_manage | name, description | Template | |
 | POST | Org/salary-templates/{tid}/versions | New draft version (copy latest) | salary.template_manage | — | Version (DRAFT) | One open draft per template |
 | PATCH | Org/salary-templates/{tid}/versions/{vid} | Edit draft | salary.template_manage | currency, effective_from, change_note | Version | DRAFT only |
 | PUT | …/versions/{vid}/components | Replace draft mappings | salary.template_manage | mappings[] (§16.6) | Mappings | Duplicates; type/currency checks |
-| POST | …/versions/{vid}/publish | Publish | salary.template_manage | — | Version (ACTIVE) | Non-overlap; effective_from rules |
+| GET | Org/salary-templates/{tid}/versions | [NEW] List all versions (mappings omitted) | salary.view / salary.template_manage | — | Version[] | 404 unknown template |
+| GET | Org/salary-templates/{tid}/versions/{vid} | [NEW] Read one version with mappings; `ETag` | salary.view / salary.template_manage | — | Version | 404 if the version belongs to another template |
+| POST | …/versions/{vid}/publish | Publish; [CHG] optional body saves unsaved edits first | salary.template_manage | optional: currency, effective_from, change_note, mappings[] | Version (ACTIVE) | Non-overlap; effective_from rules; edits roll back on failure |
 | POST | Org/salary-templates/{tid}/archive | Archive template | salary.template_manage | reason | Template | |
 | GET | Org/employees/{id}/salary-assignments | Timeline | salary.view | as_of, status[], from, to, include_cancelled | Assignments with components | |
 | GET | Org/employees/{id}/salary-assignments/current | Current as of today | salary.view | | Assignment or null | Date predicate |

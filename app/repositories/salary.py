@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.errors import ResourceNotFound
 from app.models.salary import (
@@ -128,6 +128,15 @@ class SalaryTemplateComponentRepository(OrgScopedRepository[SalaryTemplateCompon
         )
         return self._session.execute(statement).first() is not None
 
+    def count_versions_using(self, component_id: uuid.UUID) -> int:
+        statement = select(
+            func.count(func.distinct(SalaryTemplateComponent.template_version_id))
+        ).where(
+            SalaryTemplateComponent.organization_id == self.organization_id,
+            SalaryTemplateComponent.component_id == component_id,
+        )
+        return int(self._session.execute(statement).scalar_one())
+
     def list_for_version(self, version_id: uuid.UUID) -> Sequence[SalaryTemplateComponent]:
         statement = (
             self.select(include_archived=True)
@@ -208,6 +217,12 @@ class AssignmentComponentRepository(Repository):
             .limit(1)
         )
         return self._session.execute(statement).first() is not None
+
+    def count_assignments_using(self, component_id: uuid.UUID) -> int:
+        statement = select(
+            func.count(func.distinct(EmployeeSalaryComponent.salary_assignment_id))
+        ).where(EmployeeSalaryComponent.component_id == component_id)
+        return int(self._session.execute(statement).scalar_one())
 
     def list_for_assignment(self, assignment_id: uuid.UUID) -> Sequence[EmployeeSalaryComponent]:
         statement = (

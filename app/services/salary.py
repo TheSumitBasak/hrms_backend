@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from app.audit.actions import AuditAction
@@ -32,11 +33,13 @@ from app.core.errors import (
 from app.core.permissions import Permission
 from app.db.types import uuid7
 from app.models.salary import (
+    BASIC_COMPONENT_CODE,
     CONFIRMED_STATUSES,
     AmountPeriod,
     ApprovalState,
     AssignmentStatus,
     CancellationType,
+    ComponentType,
     EffectiveToSource,
     EmployeeSalaryAssignment,
     EmployeeSalaryComponent,
@@ -67,6 +70,9 @@ from app.schemas.salary import AssignmentComponentInput, ComponentMappingInput
 from app.services.organizations import assert_etag
 
 CONFIRMED = {status.value for status in CONFIRMED_STATUSES}
+PERCENT_OF_BASIC_LABEL = "% of Basic"
+_MONEY_STEP = Decimal("0.01")
+_SYSTEM_EDITABLE = {"component_name", "display_name", "description", "display_order"}
 
 
 class SalaryService:
@@ -120,11 +126,17 @@ class SalaryService:
             id=uuid7(),
             component_code=code,
             component_name=str(values["component_name"]),
+            display_name=str(values.get("display_name") or values["component_name"]),
+            component_type=str(values.get("component_type") or ComponentType.EARNING.value),
             description=values.get("description"),
-            component_category=str(values["component_category"]),
+            component_category=str(values.get("component_category") or "OTHER"),
             value_type=str(values["value_type"]),
             amount_period=str(values.get("amount_period") or "NOT_APPLICABLE"),
-            percentage_reference_label=values.get("percentage_reference_label"),
+            percentage_reference_label=(
+                values.get("percentage_reference_label") or PERCENT_OF_BASIC_LABEL
+                if values["value_type"] == ValueType.PERCENTAGE.value
+                else values.get("percentage_reference_label")
+            ),
             validation_regex=values.get("validation_regex"),
             default_value_amount=values.get("default_value_amount"),
             default_value_percentage=values.get("default_value_percentage"),
@@ -159,6 +171,8 @@ class SalaryService:
         context.require(Permission.SALARY_TEMPLATE_MANAGE)
         row = self._components.require(component_id, resource="salary component")
         assert_etag(row.row_version, if_match)
+        if row.is_system and not set(changes) <= _SYSTEM_EDITABLE:
+            raise ValidationFailed("Basic is a system component; only its names can be edited.")
         value_type_changed = "value_type" in changes and changes["value_type"] != row.value_type
         if value_type_changed and (
             self._mappings.exists_component(row.id)
@@ -185,6 +199,8 @@ class SalaryService:
     ) -> SalaryComponent:
         context.require(Permission.SALARY_TEMPLATE_MANAGE)
         row = self._components.require(component_id, resource="salary component")
+        if row.is_system:
+            raise ValidationFailed("Basic is a system component and cannot be deactivated.")
         row.status = "INACTIVE"
         row.updated_by = context.user_id
         self._audit.record_change(
@@ -197,6 +213,15 @@ class SalaryService:
             reason=reason,
         )
         return row
+
+    def component_usage(self, context: OrgContext, component_id: uuid.UUID) -> dict[str, int]:
+        """How many template versions and assignments reference a component (§16.3)."""
+        context.require_any(Permission.SALARY_VIEW, Permission.SALARY_TEMPLATE_MANAGE)
+        row = self._components.require(component_id, resource="salary component")
+        return {
+            "template_version_count": self._mappings.count_versions_using(row.id),
+            "assignment_count": self._assignment_components.count_assignments_using(row.id),
+        }
 
     # ---------------------------------------------------------------- templates
 
@@ -276,6 +301,22 @@ class SalaryService:
         )
         return header
 
+    def list_versions(
+        self, context: OrgContext, template_id: uuid.UUID
+    ) -> Sequence[SalaryTemplateVersion]:
+        context.require_any(Permission.SALARY_VIEW, Permission.SALARY_TEMPLATE_MANAGE)
+        header = self._templates.require(template_id, resource="salary template")
+        return self._versions.list_for_template(header.id)
+
+    def get_version(
+        self, context: OrgContext, template_id: uuid.UUID, version_id: uuid.UUID
+    ) -> SalaryTemplateVersion:
+        context.require_any(Permission.SALARY_VIEW, Permission.SALARY_TEMPLATE_MANAGE)
+        version = self._versions.require(version_id, resource="template version")
+        if version.template_id != template_id:
+            raise ResourceNotFound("template version")
+        return version
+
     def new_version(self, context: OrgContext, template_id: uuid.UUID) -> SalaryTemplateVersion:
         context.require(Permission.SALARY_TEMPLATE_MANAGE)
         header = self._templates.require(template_id, resource="salary template")
@@ -315,6 +356,9 @@ class SalaryService:
                 )
                 for row in self._mappings.list_for_version(latest.id)
             ]
+            basic_id = self._basic().id
+            if all(row.component_id != basic_id for row in copied):
+                copied.append(self._basic_mapping(header.id, version.id, context))
             self._mappings.replace(version, copied)
         return version
 
@@ -415,18 +459,56 @@ class SalaryService:
                     created_by=context.user_id,
                 )
             )
+        if self._basic().id not in seen:
+            rows.insert(0, self._basic_mapping(template_id, version.id, context))
         self._mappings.replace(version, rows)
         self._mappings.flush()
 
+    def _basic(self) -> SalaryComponent:
+        basic = self._components.get_by_code(BASIC_COMPONENT_CODE)
+        if basic is None:
+            raise ValidationFailed("The organization has no Basic component.")
+        return basic
+
+    def _basic_mapping(
+        self, template_id: uuid.UUID, version_id: uuid.UUID, context: OrgContext
+    ) -> SalaryTemplateComponent:
+        """Basic is in every template version; its amount can be filled in later."""
+        return SalaryTemplateComponent(
+            id=uuid7(),
+            template_id=template_id,
+            template_version_id=version_id,
+            component_id=self._basic().id,
+            is_required=True,
+            is_overridable=True,
+            display_order=0,
+            created_by=context.user_id,
+        )
+
     def publish_version(
-        self, context: OrgContext, template_id: uuid.UUID, version_id: uuid.UUID
+        self,
+        context: OrgContext,
+        template_id: uuid.UUID,
+        version_id: uuid.UUID,
+        *,
+        changes: dict[str, Any] | None = None,
+        mappings: Sequence[ComponentMappingInput] | None = None,
     ) -> SalaryTemplateVersion:
+        """Publish a draft, first saving any ``changes``/``mappings`` the caller still holds.
+
+        Saving and publishing share the caller's transaction, so a failed publish rolls the
+        unsaved edits back with it rather than leaving a half-saved draft.
+        """
         context.require(Permission.SALARY_TEMPLATE_MANAGE)
         version = self._versions.require(version_id, resource="template version")
         if version.template_id != template_id:
             raise ResourceNotFound("template version")
         if version.status != TemplateVersionStatus.DRAFT.value:
             raise ValidationFailed("Only a DRAFT version can be published.")
+        for field, value in (changes or {}).items():
+            setattr(version, field, value)
+        if mappings is not None:
+            self._replace_mappings(template_id, version, mappings, context)
         if version.effective_from is None:
             raise ValidationFailed(
                 details=[ErrorDetail("effective_from", "REQUIRED", "Set an effective date first.")]
@@ -1116,10 +1198,13 @@ class SalaryService:
         if template_id is None:
             if not values.get("components"):
                 raise ValidationFailed("An assignment needs a template or explicit components.")
-            settings = self._settings.require(context.organization_id)
-            if not settings.allow_custom_salary_components:
-                raise ValidationFailed("Custom salary components are disabled.")
-            context.require(Permission.SALARY_CUSTOM_COMPONENT)
+            # Picking existing catalogue components is ordinary assignment; the custom switch
+            # and permission guard only ad-hoc items that have no catalogue entry.
+            if any(item.component_id is None for item in values["components"]):
+                settings = self._settings.require(context.organization_id)
+                if not settings.allow_custom_salary_components:
+                    raise ValidationFailed("Custom salary components are disabled.")
+                context.require(Permission.SALARY_CUSTOM_COMPONENT)
             return None, None
         template = self._templates.require(template_id, resource="salary template")
         if template.is_archived:
@@ -1206,10 +1291,14 @@ class SalaryService:
                         raise ValidationFailed(
                             "A custom component needs code, name and value_type."
                         )
+                    if item.component_code.strip().upper() == BASIC_COMPONENT_CODE:
+                        raise ValidationFailed("BASIC is reserved for the Basic component.")
                     component = SalaryComponent(
                         id=uuid7(),
                         component_code=item.component_code,
                         component_name=item.component_name,
+                        display_name=item.display_name or item.component_name,
+                        component_type=(item.component_type or ComponentType.EARNING).value,
                         component_category=str(
                             getattr(item.component_category, "value", item.component_category)
                             or "OTHER"
@@ -1229,6 +1318,7 @@ class SalaryService:
                         is_custom=item.component_id is None,
                     )
                 )
+        _apply_basic(rows)
         return rows
 
     def _save_components(
@@ -1246,6 +1336,8 @@ class SalaryService:
                     component_id=data["component_id"],
                     component_code_snapshot=data["component_code"],
                     component_name_snapshot=data["component_name"],
+                    display_name_snapshot=data["display_name"],
+                    component_type_snapshot=data["component_type"],
                     component_category_snapshot=data["component_category"],
                     value_type=data["value_type"],
                     amount_period_snapshot=data.get("amount_period"),
@@ -1253,6 +1345,7 @@ class SalaryService:
                     value_percentage=data.get("value_percentage"),
                     value_text=data.get("value_text"),
                     value_boolean=data.get("value_boolean"),
+                    computed_amount=data.get("computed_amount"),
                     template_default_amount=data.get("template_default_amount"),
                     template_default_percentage=data.get("template_default_percentage"),
                     template_default_text=data.get("template_default_text"),
@@ -1310,6 +1403,39 @@ def _typed_value(component: SalaryComponent, values: dict[str, Any]) -> Any:
     return None
 
 
+def _apply_basic(rows: list[dict[str, Any]]) -> None:
+    """Require Basic's amount and resolve each ``%`` component to ``percentage x Basic``.
+
+    The only arithmetic in the salary module: one component's own amount, rounded half-up to
+    the money scale. No component is ever summed with another.
+    """
+    basic = next(
+        (row for row in rows if str(row["component_code"]).upper() == BASIC_COMPONENT_CODE), None
+    )
+    if basic is None or basic.get("value_amount") is None:
+        raise ValidationFailed(
+            details=[
+                ErrorDetail("components", "BASIC_REQUIRED", "Basic and its amount are required.")
+            ]
+        )
+    for row in rows:
+        if row["value_type"] != ValueType.PERCENTAGE.value:
+            continue
+        if row.get("value_percentage") is None:
+            raise ValidationFailed(
+                details=[
+                    ErrorDetail(
+                        "components",
+                        "PERCENTAGE_REQUIRED",
+                        f"{row['component_code']} needs a percentage.",
+                    )
+                ]
+            )
+        row["computed_amount"] = (basic["value_amount"] * row["value_percentage"] / 100).quantize(
+            _MONEY_STEP, rounding=ROUND_HALF_UP
+        )
+
+
 def _component_row(
     component: SalaryComponent,
     values: dict[str, Any],
@@ -1323,6 +1449,8 @@ def _component_row(
         "component_id": None if is_custom else component.id,
         "component_code": component.component_code,
         "component_name": component.component_name,
+        "display_name": component.display_name,
+        "component_type": component.component_type,
         "component_category": component.component_category,
         "value_type": component.value_type,
         "amount_period": component.amount_period,

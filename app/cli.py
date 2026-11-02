@@ -5,6 +5,7 @@
     python -m app.cli show-config       # print non-secret configuration
     python -m app.cli seed              # seed roles, permissions, states, validation config
     python -m app.cli bootstrap         # first organization + administrator, empty db only
+    python -m app.cli seed-demo         # Indian demo organization with every module in use
 
 Secrets are printed to stdout for the operator to place into a secrets store. No command
 writes a key to disk, and ``show-config`` never prints a secret value (§25.9).
@@ -206,6 +207,35 @@ def bootstrap() -> int:
     return 0
 
 
+def seed_demo_command() -> int:
+    """Load the demo organization (development only; also applied at startup by AUTO_SEED)."""
+    from app.core.config import get_settings
+    from app.core.errors import EmsError
+    from app.demo.runner import run_auto_seed
+    from app.demo.seeder import DemoSeedError
+    from app.main import create_app
+
+    settings = get_settings()
+    if settings.environment.is_production_like:
+        print("Refusing to load demo data outside development.", file=sys.stderr)
+        return 1
+    try:
+        report = run_auto_seed(create_app(settings), settings)
+    except (DemoSeedError, EmsError) as exc:
+        print(f"Demo seed failed: {exc}", file=sys.stderr)
+        return 1
+    if not report.seeded:
+        print(f"Demo seed skipped: {report.skip_reason}.")
+        return 0
+    print("Demo data loaded.")
+    for key, value in sorted(report.counts.items()):
+        print(f"  {key:24s} {value}")
+    print(f"\nSign in with any of these (password: {report.password}):")
+    for login in report.logins:
+        print(f"  {login}")
+    return 0
+
+
 def run_jobs() -> int:
     """Run the §24.7 housekeeping jobs once for every active organization."""
     from sqlalchemy import select
@@ -265,6 +295,7 @@ COMMANDS = {
     "show-config": show_config,
     "seed": seed,
     "bootstrap": bootstrap,
+    "seed-demo": seed_demo_command,
     "run-jobs": run_jobs,
     "serve-jobs": serve_jobs,
 }

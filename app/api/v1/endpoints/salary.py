@@ -18,6 +18,7 @@ from app.models.salary import (
 from app.schemas.common import ReasonRequest, etag_for
 from app.schemas.salary import (
     ApproveRequest,
+    ComponentUsageResponse,
     ConfirmRequest,
     CorrectRequest,
     PreviewResponse,
@@ -35,6 +36,7 @@ from app.schemas.salary import (
     SalaryTemplateResponse,
     SalaryTemplateUpdateRequest,
     TemplateMappingsReplaceRequest,
+    TemplatePublishRequest,
     TemplateVersionResponse,
     TemplateVersionUpdateRequest,
 )
@@ -48,6 +50,8 @@ def _component_payload(row: EmployeeSalaryComponent) -> dict[str, Any]:
         "component_id": row.component_id,
         "component_code": row.component_code_snapshot,
         "component_name": row.component_name_snapshot,
+        "display_name": row.display_name_snapshot,
+        "component_type": row.component_type_snapshot,
         "component_category": row.component_category_snapshot,
         "value_type": row.value_type,
         "amount_period": row.amount_period_snapshot,
@@ -55,6 +59,7 @@ def _component_payload(row: EmployeeSalaryComponent) -> dict[str, Any]:
         "value_percentage": None if row.value_percentage is None else str(row.value_percentage),
         "value_text": row.value_text,
         "value_boolean": row.value_boolean,
+        "computed_amount": None if row.computed_amount is None else str(row.computed_amount),
         "template_default_amount": None
         if row.template_default_amount is None
         else str(row.template_default_amount),
@@ -175,6 +180,19 @@ def update_component(
     return result
 
 
+@router.get(
+    "/salary-components/{component_id}/usage",
+    response_model=ComponentUsageResponse,
+    summary="Count the template versions and assignments using a component",
+)
+def component_usage(
+    component_id: uuid.UUID,
+    context: CurrentOrg,
+    service: Annotated[SalaryService, Depends(get_salary_service)],
+) -> ComponentUsageResponse:
+    return ComponentUsageResponse(**service.component_usage(context, component_id))
+
+
 @router.post(
     "/salary-components/{component_id}/deactivate",
     response_model=SalaryComponentResponse,
@@ -272,6 +290,39 @@ def update_template(
     return result
 
 
+@router.get(
+    "/salary-templates/{template_id}/versions",
+    response_model=list[TemplateVersionResponse],
+    summary="List every version of a template (mappings omitted)",
+)
+def list_versions(
+    template_id: uuid.UUID,
+    context: CurrentOrg,
+    service: Annotated[SalaryService, Depends(get_salary_service)],
+) -> list[TemplateVersionResponse]:
+    return [
+        TemplateVersionResponse.model_validate(row)
+        for row in service.list_versions(context, template_id)
+    ]
+
+
+@router.get(
+    "/salary-templates/{template_id}/versions/{version_id}",
+    response_model=TemplateVersionResponse,
+    summary="Read one template version with its mappings",
+)
+def read_version(
+    template_id: uuid.UUID,
+    version_id: uuid.UUID,
+    response: Response,
+    context: CurrentOrg,
+    service: Annotated[SalaryService, Depends(get_salary_service)],
+) -> TemplateVersionResponse:
+    version = service.get_version(context, template_id, version_id)
+    response.headers["ETag"] = etag_for(version.row_version)
+    return _version_payload(service, version)
+
+
 @router.post(
     "/salary-templates/{template_id}/versions",
     response_model=TemplateVersionResponse,
@@ -346,9 +397,17 @@ def publish_version(
     context: CurrentOrg,
     db: DbSession,
     service: Annotated[SalaryService, Depends(get_salary_service)],
+    payload: TemplatePublishRequest | None = None,
 ) -> TemplateVersionResponse:
+    changes = payload.model_dump(exclude_unset=True, exclude={"mappings"}) if payload else None
     with unit_of_work(db):
-        version = service.publish_version(context, template_id, version_id)
+        version = service.publish_version(
+            context,
+            template_id,
+            version_id,
+            changes=changes,
+            mappings=payload.mappings if payload else None,
+        )
         return _version_payload(service, version)
 
 

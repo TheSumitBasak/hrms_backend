@@ -7,21 +7,50 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import AfterValidator, Field, model_validator
 
 from app.models.salary import (
     AmountPeriod,
     ComponentCategory,
+    ComponentType,
     ValueType,
 )
 from app.schemas.common import ApiModel
+
+_ISO_4217_TEXT = (
+    "AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB "
+    "BRL BSD BTN BWP BYN BZD CAD CDF CHF CLP CNY COP CRC CUP CVE CZK DJF DKK DOP "
+    "DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG HUF "
+    "IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK "
+    "LBP LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MYR MZN "
+    "NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF "
+    "SAR SBD SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND "
+    "TOP TRY TTD TWD TZS UAH UGX USD UYU UZS VES VND VUV WST XAF XCD XOF XPF YER "
+    "ZAR ZMW ZWL"
+)
+ISO_4217_CODES = frozenset(_ISO_4217_TEXT.split())
+"""Active ISO 4217 codes. A pattern alone accepts ``XXX`` or ``ABC``, which would reach a
+payslip header as a currency nobody can convert."""
+
+
+def _iso_currency(value: str) -> str:
+    if value not in ISO_4217_CODES:
+        raise ValueError("must be an ISO 4217 currency code")
+    return value
+
+
+CurrencyCode = Annotated[str, Field(pattern=r"^[A-Z]{3}$"), AfterValidator(_iso_currency)]
 
 
 class SalaryComponentCreateRequest(ApiModel):
     component_code: Annotated[str, Field(pattern=r"^[A-Z0-9][A-Z0-9_./-]{0,29}$")]
     component_name: Annotated[str, Field(min_length=2, max_length=100)]
+    display_name: Annotated[str, Field(min_length=2, max_length=100)] | None = None
+    """Shown to the employee; defaults to ``component_name``."""
+
+    component_type: ComponentType = ComponentType.EARNING
     description: Annotated[str, Field(max_length=500)] | None = None
-    component_category: ComponentCategory
+    component_category: ComponentCategory = ComponentCategory.OTHER
     value_type: ValueType
     amount_period: AmountPeriod = AmountPeriod.NOT_APPLICABLE
     percentage_reference_label: Annotated[str, Field(max_length=100)] | None = None
@@ -30,7 +59,7 @@ class SalaryComponentCreateRequest(ApiModel):
     default_value_percentage: Annotated[Decimal, Field(ge=0, le=100)] | None = None
     default_value_text: Annotated[str, Field(max_length=500)] | None = None
     default_value_boolean: bool | None = None
-    currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] | None = None
+    currency: CurrencyCode | None = None
     is_required: bool = False
     is_editable_per_employee: bool = True
     display_order: Annotated[int, Field(ge=0)] = 0
@@ -44,8 +73,6 @@ class SalaryComponentCreateRequest(ApiModel):
                 raise ValueError("a fixed amount requires a currency")
         elif self.amount_period is not AmountPeriod.NOT_APPLICABLE:
             raise ValueError("amount_period applies only to FIXED_AMOUNT")
-        if self.value_type is ValueType.PERCENTAGE and not self.percentage_reference_label:
-            raise ValueError("a percentage requires a reference label")
         if self.value_type is ValueType.OTHER_CONFIGURED and not self.validation_regex:
             raise ValueError("OTHER_CONFIGURED requires a validation_regex")
         return self
@@ -53,6 +80,7 @@ class SalaryComponentCreateRequest(ApiModel):
 
 class SalaryComponentUpdateRequest(ApiModel):
     component_name: Annotated[str, Field(min_length=2, max_length=100)] | None = None
+    display_name: Annotated[str, Field(min_length=2, max_length=100)] | None = None
     description: Annotated[str, Field(max_length=500)] | None = None
     component_category: ComponentCategory | None = None
     amount_period: AmountPeriod | None = None
@@ -62,7 +90,7 @@ class SalaryComponentUpdateRequest(ApiModel):
     default_value_percentage: Annotated[Decimal, Field(ge=0, le=100)] | None = None
     default_value_text: Annotated[str, Field(max_length=500)] | None = None
     default_value_boolean: bool | None = None
-    currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] | None = None
+    currency: CurrencyCode | None = None
     is_required: bool | None = None
     is_editable_per_employee: bool | None = None
     display_order: Annotated[int, Field(ge=0)] | None = None
@@ -72,6 +100,9 @@ class SalaryComponentResponse(ApiModel):
     id: uuid.UUID
     component_code: str
     component_name: str
+    display_name: str
+    component_type: str
+    is_system: bool
     description: str | None
     component_category: str
     value_type: str
@@ -105,7 +136,7 @@ class SalaryTemplateCreateRequest(ApiModel):
     template_code: Annotated[str, Field(pattern=r"^[A-Z0-9][A-Z0-9_./-]{0,29}$")]
     template_name: Annotated[str, Field(min_length=2, max_length=150)]
     description: Annotated[str, Field(max_length=1000)] | None = None
-    currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
+    currency: CurrencyCode
     effective_from: date | None = None
     version_change_note: Annotated[str, Field(max_length=1000)] | None = None
     mappings: list[ComponentMappingInput] = Field(default_factory=list)
@@ -126,13 +157,28 @@ class SalaryTemplateResponse(ApiModel):
 
 
 class TemplateVersionUpdateRequest(ApiModel):
-    currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] | None = None
+    currency: CurrencyCode | None = None
     effective_from: date | None = None
     change_note: Annotated[str, Field(max_length=1000)] | None = None
 
 
 class TemplateMappingsReplaceRequest(ApiModel):
     mappings: list[ComponentMappingInput]
+
+
+class TemplatePublishRequest(TemplateVersionUpdateRequest):
+    """Optional body for publish: unsaved builder state, saved in the same transaction.
+
+    Omitted fields keep their stored value; ``mappings`` omitted keeps the stored mappings,
+    an empty list clears them.
+    """
+
+    mappings: list[ComponentMappingInput] | None = None
+
+
+class ComponentUsageResponse(ApiModel):
+    template_version_count: int
+    assignment_count: int
 
 
 class TemplateVersionResponse(ApiModel):
@@ -152,6 +198,8 @@ class AssignmentComponentInput(ApiModel):
     component_id: uuid.UUID | None = None
     component_code: Annotated[str, Field(max_length=30)] | None = None
     component_name: Annotated[str, Field(max_length=100)] | None = None
+    display_name: Annotated[str, Field(max_length=100)] | None = None
+    component_type: ComponentType | None = None
     component_category: ComponentCategory | None = None
     value_type: ValueType | None = None
     amount_period: AmountPeriod | None = None
@@ -282,6 +330,7 @@ __all__ = [
     "AssignmentComponentInput",
     "CompareComponent",
     "ComponentMappingInput",
+    "ComponentUsageResponse",
     "ConfirmRequest",
     "CorrectRequest",
     "PreviewResponse",
@@ -299,6 +348,7 @@ __all__ = [
     "SalaryTemplateResponse",
     "SalaryTemplateUpdateRequest",
     "TemplateMappingsReplaceRequest",
+    "TemplatePublishRequest",
     "TemplateVersionResponse",
     "TemplateVersionUpdateRequest",
 ]

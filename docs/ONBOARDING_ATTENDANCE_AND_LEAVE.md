@@ -11,6 +11,7 @@
 | Modules | Employee Onboarding (ONB), Attendance Management (ATT), Leave Management (LEV) |
 | Target market | Unchanged (EMS metadata): organizations operating in India, multi-organization deployment |
 | Status | Source of truth for the three modules once approved; items in §18 require product-owner and/or legal sign-off |
+| Amendments | 2026-11-01: the first-run administrator also holds AIC (§10.3 note 6), so it can use `attendance.import`. |
 
 ---
 
@@ -23,7 +24,7 @@ This addendum specifies only the additions, modifications, extensions and integr
 - The EMS remains authoritative for every rule, entity, field, API and convention not explicitly changed here.
 - Every change to an existing EMS rule is listed in §2.6 with its disposition (Unchanged, Extended, Superseded). No other EMS rule is modified, even implicitly.
 - Existing EMS field catalogs are referenced by section and field name and are not copied.
-- Salary-reference-only behaviour (EMS §4.3, §16–§18) is unchanged. No payroll, tax, statutory contribution, salary deduction or settlement computation is introduced (§2.5).
+- Salary behaviour (EMS §4.3, §16–§18) is unchanged by this addendum, except as amended in the EMS on 2026-11-02: components have a `display_name` and `component_type` (EARNING/DEDUCTION), Basic is a system component, and a PERCENTAGE component is a percentage of Basic with its own amount stored at assignment time. No payroll, tax, statutory contribution, salary deduction or settlement computation is introduced (§2.5).
 
 ### 1.3 Reference Conventions
 - "EMS §n" refers to a section of EMPLOYEE_MANAGEMENT_SYSTEM.md. A bare "§n" refers to this addendum.
@@ -124,7 +125,7 @@ EMS §1.3 is replaced by:
 | All other rows | Unchanged | — | — |
 
 ### 2.5 Computation Guardrails (EMS §4.3) [CHG — extended]
-EMS §4.3 remains in force. In addition, the system MUST NOT compute, store as derived values, or display: loss-of-pay days or amounts; "payable days" or "paid days" for payroll; overtime hours for payment or overtime pay; attendance-based salary proration; late-coming penalties or deductions; leave encashment amounts; or any monetary value of leave balances. `paid_classification` (§6.2) is a label and MUST NOT be combined with any salary value.
+EMS §4.3 remains in force, including its single permitted calculation: a PERCENTAGE salary component's own amount as a percentage of Basic ([CHG 2026-11-02]). In addition, the system MUST NOT compute, store as derived values, or display: loss-of-pay days or amounts; "payable days" or "paid days" for payroll; overtime hours for payment or overtime pay; attendance-based salary proration; late-coming penalties or deductions; leave encashment amounts; or any monetary value of leave balances. `paid_classification` (§6.2) is a label and MUST NOT be combined with any salary value.
 
 The following non-monetary values are permitted because they are defined explicitly in this addendum: worked minutes per attendance record (§5.10), counts of half-day slots by attendance status (§5.16), leave durations and balances in days (§6.5–§6.9), and onboarding progress percentages (§4.6).
 
@@ -2242,6 +2243,8 @@ Existing roles are unchanged. Roles remain combinable (EMS §5.1).
 | self.leave | Self-service leave operations (§11) |
 
 ### 10.3 Permission Matrix (EMS §5.3 extension) [CHG]
+
+> **[CHG 2026-11-01] Note 6, first-run administrator.** `app.cli bootstrap` grants the first administrator SSA, OA, HRA **and AIC**, each as an ordinary `user_organization_access` row. AIC is the only holder of `attendance.import`, so without it the "all access" administrator could not import punches. The three `self.*` permissions (`self.onboarding`, `self.attendance`, `self.leave`) are deliberately **not** granted: they are `C` cells for SELF, act on the caller's own employee record (which the bootstrap user does not have), and are off until an OA enables them. An AIC grant is intended for service accounts; revoking that one row removes `attendance.import` from the administrator without touching the rest. The change applies to new bootstraps only; the bootstrap remains a no-op once any user or organization exists.
 Legend (EMS §5.3): **Y** = granted; **N** = not granted; **S** = scoped subset (EMS §5.4 Department Manager scope); **C** = not granted by default, may be enabled per organization by an OA; **A** (new) = only for items assigned to the user (as assignee, queue member, reviewer or current approver). SSA keeps break-glass access only (EMS §5.3 note 1). The SELF column is new: EMS §5.3 did not show self-service, which this addendum defines in §11.
 
 | Capability (permission codes) | SSA | OA | HRA | HRE | DM | RV | RDR | OTO | AIC | SELF |

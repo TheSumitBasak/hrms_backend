@@ -38,11 +38,19 @@ from app.models.org_config import (
     NominationTypeConfig,
     NormalizationStrategy,
 )
-from app.models.organization import OrganizationSettings
+from app.models.organization import Organization, OrganizationSettings
 from app.models.platform import Permission as PermissionRow
 from app.models.platform import Role as RoleRow
 from app.models.platform import RolePermission
 from app.models.reference import State
+from app.models.salary import (
+    BASIC_COMPONENT_CODE,
+    AmountPeriod,
+    ComponentCategory,
+    ComponentType,
+    SalaryComponent,
+    ValueType,
+)
 from app.repositories.platform import SYSTEM_ROLE_DEFINITIONS
 from app.validation.rules import PATTERNS, RULES, RuleId, Severity
 
@@ -548,6 +556,7 @@ class OrganizationSeedReport:
     employment_types: int = 0
     identifier_policies: int = 0
     nomination_configs: int = 0
+    basic_component: int = 0
     settings_created: bool = False
 
 
@@ -564,14 +573,50 @@ def seed_organization(session: Session, organization_id: uuid.UUID) -> Organizat
     employment_types = _seed_employment_types(session, organization_id)
     policies = _seed_identifier_policies(session, organization_id)
     nominations = _seed_nomination_configs(session, organization_id)
+    basic = _seed_basic_component(session, organization_id)
     return OrganizationSeedReport(
         lookup_values=lookups,
         document_categories=categories,
         employment_types=employment_types,
         identifier_policies=policies,
         nomination_configs=nominations,
+        basic_component=basic,
         settings_created=settings_created,
     )
+
+
+def _seed_basic_component(session: Session, organization_id: uuid.UUID) -> int:
+    """The system Basic component: always present, never deletable, base of every ``%``."""
+    exists = session.execute(
+        select(SalaryComponent.id).where(
+            SalaryComponent.organization_id == organization_id,
+            SalaryComponent.component_code_normalized == BASIC_COMPONENT_CODE,
+        )
+    ).first()
+    if exists is not None:
+        return 0
+    currency = session.execute(
+        select(Organization.default_currency).where(Organization.id == organization_id)
+    ).scalar_one()
+    session.add(
+        SalaryComponent(
+            id=uuid7(),
+            organization_id=organization_id,
+            component_code=BASIC_COMPONENT_CODE,
+            component_name="Basic",
+            display_name="Basic",
+            component_type=ComponentType.EARNING.value,
+            component_category=ComponentCategory.EARNINGS.value,
+            value_type=ValueType.FIXED_AMOUNT.value,
+            amount_period=AmountPeriod.MONTHLY.value,
+            currency=currency,
+            is_required=True,
+            is_system=True,
+            display_order=0,
+            status="ACTIVE",
+        )
+    )
+    return 1
 
 
 def _seed_settings(session: Session, organization_id: uuid.UUID) -> bool:

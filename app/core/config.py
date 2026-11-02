@@ -195,6 +195,9 @@ class Settings(BaseSettings):
     """Name of the organization created alongside the first administrator. Its
     ``organization_code`` is derived from it (§7.2) and its registered address is a
     placeholder the operator is expected to correct."""
+    auto_seed: bool = False
+    """Load the Indian demo organization (``app.demo``) at startup, once. Development only:
+    it creates accounts with a known password, so staging/production refuse it."""
 
     # ---------------------------------------------------------------- validators
 
@@ -325,6 +328,8 @@ class Settings(BaseSettings):
                 "seed_admin_password must not be set: the first-run bootstrap is for "
                 "development only (§19)"
             )
+        if self.auto_seed:
+            problems.append("auto_seed must be false: demo data is for development only")
         if problems:
             joined = "; ".join(problems)
             raise ValueError(f"unsafe configuration for environment={self.environment}: {joined}")

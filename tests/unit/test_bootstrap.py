@@ -33,11 +33,10 @@ CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9]{1,9}$")
 """§7.2 ``organization_code``, as the database CHECK constraint spells it."""
 
 
-# Addendum §10.3: only the AIC service account (import) and the SELF role (configurable
-# self-service) hold these, so no administrator trio covers them.
+# Addendum §10.3: the SELF role's configurable self-service cells act on the caller's own
+# employee record, which the bootstrap administrator does not have.
 _OUTSIDE_BOOTSTRAP = frozenset(
     {
-        Permission.ATTENDANCE_IMPORT,
         Permission.SELF_ONBOARDING,
         Permission.SELF_ATTENDANCE,
         Permission.SELF_LEAVE,
