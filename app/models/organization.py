@@ -538,6 +538,17 @@ class OrganizationSettings(Base):
         Boolean, nullable=False, default=False, server_default=text("0")
     )
 
+    # ---- payroll (payroll addendum §4.1) ----
+    enable_payroll_module: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    enable_payroll_self_service: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    enable_payroll_alumni_access: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("1")
+    )
+
 
 class OrganizationFile(Base, PrimaryKeyColumn):
     """An organization-level file: a logo or a registration certificate (§23.2).

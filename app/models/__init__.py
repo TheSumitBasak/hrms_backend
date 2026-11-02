@@ -28,6 +28,8 @@ MODEL_MODULES: tuple[str, ...] = (
     "profile",  # education, previous employment, family, nominees, bank accounts
     "document",  # document categories and employee documents
     "salary",  # components, templates, assignments, revision history
+    "payroll",  # payroll settings, pay groups, period calendar
+    "statutory_rules",  # platform rule sets, versions, parameters, slabs (payroll addendum §4.6)
     "org_config",  # registrations, identifier and nomination policies, notice versions
     "employee_code",  # ID rules, sequence counters, code registry
     "privacy",  # notices, change requests, erasure requests, purge batches

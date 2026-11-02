@@ -89,11 +89,13 @@ def read_organization_context(
             onboarding=cfg.enable_onboarding_module,
             attendance=cfg.enable_attendance_module,
             leave=cfg.enable_leave_module,
+            payroll=cfg.enable_payroll_module,
         ),
         self_service=ContextSelfService(
             onboarding=cfg.enable_onboarding_self_service,
             attendance=cfg.enable_attendance_self_service,
             leave=cfg.enable_leave_self_service,
+            payroll=cfg.enable_payroll_self_service,
             employee_self_view=cfg.enable_employee_self_view,
             self_view_salary=cfg.self_view_salary,
         ),

@@ -35,12 +35,27 @@ CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9]{1,9}$")
 
 # Addendum §10.3: the SELF role's configurable self-service cells act on the caller's own
 # employee record, which the bootstrap administrator does not have.
-_OUTSIDE_BOOTSTRAP = frozenset(
-    {
-        Permission.SELF_ONBOARDING,
-        Permission.SELF_ATTENDANCE,
-        Permission.SELF_LEAVE,
-    }
+_PAYROLL_ROLES = (
+    Role.PAYROLL_ADMINISTRATOR,
+    Role.PAYROLL_PROCESSOR,
+    Role.PAYROLL_APPROVER,
+    Role.FINANCE_USER,
+    Role.STATUTORY_COMPLIANCE_OFFICER,
+    Role.PAYROLL_AUDITOR,
+    Role.EMPLOYEE_ALUMNI,
+)
+# Payroll addendum 16.1: existing roles get no payroll permissions, and maker-checker (PAY-40)
+# means one account must not hold both processor and approver. The bootstrap administrator
+# grants payroll roles to people (OA may grant them) instead of holding them. SSA keeps only
+# the two rule-version permissions, which the platform matrix gives it.
+_PAYROLL_ONLY = frozenset().union(
+    *(ROLE_PERMISSIONS[role] for role in _PAYROLL_ROLES)
+) - frozenset().union(*(ROLE_PERMISSIONS[role] for role in BOOTSTRAP_ROLES))
+# Every self.* cell acts on the caller's own employee record, which the bootstrap
+# administrator does not have (OAL 10.3, payroll 16.3).
+_OUTSIDE_BOOTSTRAP = (
+    frozenset(permission for permission in Permission if permission.value.startswith("self."))
+    | _PAYROLL_ONLY
 )
 
 

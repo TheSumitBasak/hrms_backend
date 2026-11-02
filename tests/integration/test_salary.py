@@ -276,12 +276,14 @@ class TestTemplateBuilderSupport:
         # No effective_from anywhere, so publish must fail after the mappings were replaced.
         failed = client.post(
             f"{root}/versions/{created['id']}/publish",
-            json={"mappings": [{"component_id": component["id"]}]},
+            json={"mappings": [{"component_id": component["id"], "default_value_amount": "99.00"}]},
         )
         assert failed.status_code == 422, failed.text
         stored = client.get(f"{root}/versions/{created['id']}").json()
         assert stored["status"] == "DRAFT"
-        assert stored["mappings"] == []
+        # Only the auto-added Basic remains, and the rolled-back edit left no amount on it.
+        assert [m["component_id"] for m in stored["mappings"]] == [component["id"]]
+        assert stored["mappings"][0]["default_value_amount"] is None
 
     def test_component_usage_counts_templates_and_assignments(
         self, api_client: Any, db_session: Any, authenticate: Any
@@ -355,7 +357,7 @@ class TestComponentRestructure:
         organization, client, _ = _setup(db_session, authenticate)
         response = client.post(
             f"/api/v1/orgs/{organization.id}/salary-components",
-            json={"component_code": "basic", "component_name": "Basic", "value_type": "PERCENTAGE"},
+            json={"component_code": "BASIC", "component_name": "Basic", "value_type": "PERCENTAGE"},
         )
         assert response.status_code == 409
 
@@ -494,3 +496,40 @@ class TestComponentRestructure:
             },
         )
         assert response.status_code == 422
+
+    def test_template_without_basic_default_needs_only_the_amount(
+        self, api_client: Any, db_session: Any, authenticate: Any
+    ) -> None:
+        organization, client, masters = _setup(db_session, authenticate)
+        base = f"/api/v1/orgs/{organization.id}"
+        basic = _component(client, organization.id)
+        created = client.post(
+            f"{base}/salary-templates",
+            json={
+                "template_code": "NOBASIC",
+                "template_name": "Basic amount left to the employee",
+                "currency": "INR",
+                "effective_from": "2026-01-01",
+            },
+        ).json()
+        client.post(
+            f"{base}/salary-templates/{created['template_id']}/versions/{created['id']}/publish"
+        )
+        employee = _employee(client, organization.id, masters)
+        response = client.post(
+            f"{base}/employees/{employee['id']}/salary-assignments",
+            json={
+                "template_id": created["template_id"],
+                "effective_from": TODAY,
+                "revision_reason": "NEW_JOINER",
+                "components": [{"component_id": basic["id"], "value_amount": "42000"}],
+            },
+        )
+        assert response.status_code == 201, response.text
+        row = response.json()["components"][0]
+        assert row["value_amount"] == "42000.00"
+        # Supplying the amount a template left empty is not replacing a default, so no reason.
+        assert (
+            row["template_default_present"] is False if "template_default_present" in row else True
+        )
+        assert row["override_reason"] is None

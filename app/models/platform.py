@@ -142,11 +142,11 @@ class Role(Base, PrimaryKeyColumn):
     __table_args__ = (
         UniqueConstraint("role_code", name="uq_roles_role_code"),
         CheckConstraint(
-            "CHAR_LENGTH(role_code) BETWEEN 2 AND 10", name="ck_roles_role_code_length"
+            "CHAR_LENGTH(role_code) BETWEEN 2 AND 20", name="ck_roles_role_code_length"
         ),
     )
 
-    role_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    role_code: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_system: Mapped[bool] = mapped_column(

@@ -242,7 +242,12 @@ def run_jobs() -> int:
 
     from app.core.config import get_settings
     from app.db.session import get_session_factory, unit_of_work
-    from app.jobs.runner import run_attendance_jobs, run_for_organization, run_leave_jobs
+    from app.jobs.runner import (
+        run_attendance_jobs,
+        run_for_organization,
+        run_leave_jobs,
+        run_payroll_jobs,
+    )
     from app.models.organization import Organization
     from app.storage.local import LocalStorage
 
@@ -262,6 +267,7 @@ def run_jobs() -> int:
             # Leave jobs commit per employee themselves, so they run outside unit_of_work.
             report |= run_leave_jobs(session, organization_id)
             report |= run_attendance_jobs(session, organization_id)
+            report |= run_payroll_jobs(session, organization_id)
             for key, value in report.items():
                 totals[key] = totals.get(key, 0) + value
     finally:

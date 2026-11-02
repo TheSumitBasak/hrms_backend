@@ -115,6 +115,13 @@ from app.repositories.organization import (
     OrganizationRepository,
     OrganizationSettingsRepository,
 )
+from app.repositories.payroll import (
+    PayGroupRepository,
+    PayrollPeriodRepository,
+    PayrollSettingsRepository,
+    StatutoryRegistrationBranchRepository,
+    StatutoryRegistrationSettingRepository,
+)
 from app.repositories.platform import (
     AccessGrantRepository,
     IdempotencyRepository,
@@ -167,6 +174,7 @@ from app.repositories.schedule import (
     HolidayRepository,
     WeeklyOffPatternRepository,
 )
+from app.repositories.statutory_rules import StatutoryRuleRepository
 from app.schemas.common import CursorCodec, parse_if_match
 from app.services.access import AccessService, PermissionCache
 from app.services.approvals import ApprovalRouter
@@ -195,12 +203,15 @@ from app.services.onboarding_submissions import SubmissionService
 from app.services.onboarding_templates import TemplateService
 from app.services.org_config import OrganizationConfigService
 from app.services.organizations import OrganizationService
+from app.services.payroll_config import PayrollConfigService
 from app.services.position_assignments import PositionAssignmentService
 from app.services.positions import PositionService
 from app.services.privacy import PrivacyService
 from app.services.profile_records import ProfileRecordService
 from app.services.salary import SalaryService
 from app.services.schedule import ScheduleService
+from app.services.statutory_registration import StatutoryRegistrationService
+from app.services.statutory_rules import StatutoryRuleService
 from app.services.transfers import TransferService
 from app.storage.local import LocalStorage, SignedUrlSigner
 
@@ -666,6 +677,25 @@ def get_salary_service(
         employees=employees,
         organizations=organizations,
         settings=settings_repo,
+        audit=audit,
+    )
+
+
+def get_payroll_config_service(
+    db: DbSession,
+    context: CurrentOrg,
+    organizations: Annotated[OrganizationRepository, Depends(get_organization_repository)],
+    org_settings: Annotated[
+        OrganizationSettingsRepository, Depends(get_organization_settings_repository)
+    ],
+    audit: Annotated[AuditWriter, Depends(get_audit_writer)],
+) -> PayrollConfigService:
+    return PayrollConfigService(
+        settings=PayrollSettingsRepository(db, context.organization_id),
+        groups=PayGroupRepository(db, context.organization_id),
+        periods=PayrollPeriodRepository(db, context.organization_id),
+        organizations=organizations,
+        org_settings=org_settings,
         audit=audit,
     )
 
@@ -1600,6 +1630,7 @@ __all__ = [
     "get_organization_group_repository",
     "get_organization_repository",
     "get_organization_settings_repository",
+    "get_payroll_config_service",
     "get_permission_cache",
     "get_previous_employment_document_repository",
     "get_previous_employment_repository",
@@ -1642,3 +1673,33 @@ def get_submission_service(
         cipher=cipher,
         audit=audit,
     )
+
+
+def get_statutory_registration_service(
+    db: DbSession,
+    context: CurrentOrg,
+    registrations: Annotated[
+        OrganizationRegistrationRepository, Depends(get_registration_repository)
+    ],
+    branches: Annotated[BranchRepository, Depends(get_branch_repository)],
+    org_settings: Annotated[
+        OrganizationSettingsRepository, Depends(get_organization_settings_repository)
+    ],
+    cipher: Annotated[FieldCipher, Depends(get_field_cipher)],
+    audit: Annotated[AuditWriter, Depends(get_audit_writer)],
+) -> StatutoryRegistrationService:
+    return StatutoryRegistrationService(
+        settings=StatutoryRegistrationSettingRepository(db, context.organization_id),
+        setting_branches=StatutoryRegistrationBranchRepository(db, context.organization_id),
+        registrations=registrations,
+        branches=branches,
+        org_settings=org_settings,
+        cipher=cipher,
+        audit=audit,
+    )
+
+
+def get_statutory_rule_service(
+    db: DbSession, audit: Annotated[AuditWriter, Depends(get_audit_writer)]
+) -> StatutoryRuleService:
+    return StatutoryRuleService(rules=StatutoryRuleRepository(db), audit=audit)

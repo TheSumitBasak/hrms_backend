@@ -1248,10 +1248,13 @@ class SalaryService:
                     "value_text": mapping.default_value_text,
                     "value_boolean": mapping.default_value_boolean,
                 }
+                default_present = _typed_value(component, default_value) is not None
                 overridden = override is not None and _typed_value(
                     component, value
                 ) != _typed_value(component, default_value)
-                if overridden and (override is None or not override.override_reason):
+                # Only replacing a real template default needs a reason; supplying the amount a
+                # template left empty (Basic) does not.
+                if overridden and default_present and not (override and override.override_reason):
                     raise ValidationFailed(
                         details=[
                             ErrorDetail(
@@ -1266,6 +1269,7 @@ class SalaryService:
                         component,
                         value,
                         template_defaults={
+                            "present": default_present,
                             "amount": mapping.default_value_amount,
                             "percentage": mapping.default_value_percentage,
                             "text": mapping.default_value_text,
@@ -1462,7 +1466,7 @@ def _component_row(
         "template_default_percentage": template_defaults.get("percentage"),
         "template_default_text": template_defaults.get("text"),
         "template_default_boolean": template_defaults.get("boolean"),
-        "template_default_present": bool(template_defaults),
+        "template_default_present": bool(template_defaults.get("present")),
         "currency": component.currency,
         "is_overridden": overridden,
         "override_reason": override_reason,

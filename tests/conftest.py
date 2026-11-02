@@ -63,11 +63,12 @@ def _resolve_test_database_url() -> str | None:
     if not candidate:
         env_file = Path(__file__).resolve().parent.parent / ".env"
         if env_file.exists():
+            values: dict[str, str] = {}
             for line in env_file.read_text(encoding="utf-8").splitlines():
-                stripped = line.strip()
-                if stripped.startswith("DATABASE_URL="):
-                    candidate = stripped.split("=", 1)[1].strip().strip("\"'")
-                    break
+                key, separator, value = line.strip().partition("=")
+                if separator:
+                    values[key] = value.strip().strip("\"'")
+            candidate = values.get("EMS_TEST_DATABASE_URL") or values.get("DATABASE_URL")
     if not candidate:
         return None
 

@@ -322,3 +322,58 @@ class TestMatrixIntegrity:
         resolved = resolve_permissions(frozenset({Role.READ_ONLY_VIEWER}))
         with pytest.raises((AttributeError, TypeError)):
             resolved.permissions = frozenset(Permission)  # type: ignore[misc]
+
+
+class TestPayrollMatrix:
+    """Payroll addendum 16.1 to 16.3."""
+
+    def test_existing_roles_gain_no_payroll_permission_by_default(self) -> None:
+        payroll = {p for p in Permission if p.value.split(".")[0] in {"payroll", "loan", "tax"}}
+        for role in (Role.HR_ADMIN, Role.HR_EXECUTIVE, Role.DEPARTMENT_MANAGER):
+            assert not ROLE_PERMISSIONS[role] & payroll
+
+    def test_department_manager_never_reaches_payroll_even_when_enabled(self) -> None:
+        reachable = permissions_for_role(
+            Role.DEPARTMENT_MANAGER, enabled_configurable=ALL_PERMISSIONS
+        )
+        assert not any(
+            p.value.split(".")[0] in {"payroll", "loan", "tax", "fnf"} for p in reachable
+        )
+
+    def test_no_single_role_can_both_calculate_and_approve(self) -> None:
+        """Maker-checker (PAY-40): the processor and the approver are different roles."""
+        for role in Role:
+            held = permissions_for_role(role, enabled_configurable=ALL_PERMISSIONS)
+            assert not {Permission.PAYROLL_CALCULATE, Permission.PAYROLL_APPROVE} <= held
+
+    def test_system_super_admin_holds_only_the_rule_permissions(self) -> None:
+        held = ROLE_PERMISSIONS[Role.SYSTEM_SUPER_ADMIN]
+        assert Permission.STATUTORY_RULE_PREPARE in held
+        assert Permission.STATUTORY_RULE_PUBLISH in held
+        assert not {p for p in held if p.value.startswith(("payroll.", "tax.", "loan."))}
+
+    def test_auditor_is_read_only(self) -> None:
+        held = permissions_for_role(Role.PAYROLL_AUDITOR, enabled_configurable=ALL_PERMISSIONS)
+        writes = {p for p in held if p.value.endswith(("_manage", "_create", ".approve", ".lock"))}
+        assert not writes
+
+    def test_only_finance_can_manage_payments(self) -> None:
+        holders = {
+            role
+            for role in Role
+            if Permission.PAYROLL_PAYMENT_MANAGE
+            in permissions_for_role(role, enabled_configurable=ALL_PERMISSIONS)
+        }
+        assert holders == {Role.FINANCE_USER}
+
+    def test_alumni_see_only_their_own_payslips_and_tax_documents(self) -> None:
+        assert ROLE_PERMISSIONS[Role.EMPLOYEE_ALUMNI] == frozenset(
+            {Permission.SELF_PAYSLIP, Permission.SELF_TAX_DOCUMENTS}
+        )
+
+    def test_payroll_self_service_is_an_organization_opt_in(self) -> None:
+        assert Permission.SELF_PAYROLL not in ROLE_PERMISSIONS[Role.EMPLOYEE_SELF]
+        assert Permission.SELF_PAYROLL in configurable_permissions_for(Role.EMPLOYEE_SELF)
+
+    def test_role_codes_fit_the_column(self) -> None:
+        assert all(2 <= len(role.value) <= 20 for role in Role)

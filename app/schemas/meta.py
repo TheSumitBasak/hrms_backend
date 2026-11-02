@@ -32,12 +32,14 @@ class ContextModules(ApiModel):
     onboarding: bool
     attendance: bool
     leave: bool
+    payroll: bool = False
 
 
 class ContextSelfService(ApiModel):
     onboarding: bool
     attendance: bool
     leave: bool
+    payroll: bool = False
     employee_self_view: bool
     self_view_salary: bool
 

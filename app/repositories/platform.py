@@ -527,6 +527,34 @@ SYSTEM_ROLE_DEFINITIONS: dict[Role, tuple[str, str]] = {
         "Attendance Integration Client",
         "Service account that imports punches. No read access beyond import results.",
     ),
+    Role.PAYROLL_ADMINISTRATOR: (
+        "Payroll Administrator",
+        "Payroll configuration, pay groups, component behaviour, payslip templates and reports.",
+    ),
+    Role.PAYROLL_PROCESSOR: (
+        "Payroll Processor",
+        "Inputs, run creation, calculation, submission, payslip operations and F&F preparation.",
+    ),
+    Role.PAYROLL_APPROVER: (
+        "Payroll Approver",
+        "Reviews, approves, locks and reopens payroll runs and approves F&F.",
+    ),
+    Role.FINANCE_USER: (
+        "Finance User",
+        "Payments, bank advice files, loan disbursement and challan payment recording.",
+    ),
+    Role.STATUTORY_COMPLIANCE_OFFICER: (
+        "Statutory Compliance Officer",
+        "Statutory registration settings, challans, returns, reconciliation and certificates.",
+    ),
+    Role.PAYROLL_AUDITOR: (
+        "Payroll Auditor",
+        "Read-only access to payroll, tax, statutory and audit data. No reveal.",
+    ),
+    Role.EMPLOYEE_ALUMNI: (
+        "Employee alumni",
+        "Restricted self-service access to the employee's own payslips and tax documents.",
+    ),
 }
 """§5.1 role names and purposes, used by the seeder."""
 

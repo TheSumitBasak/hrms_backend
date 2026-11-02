@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import Engine, func, inspect, select, text
 
 from app.core.errors import ValidationFailed
-from app.core.permissions import ALL_PERMISSIONS, Permission
+from app.core.permissions import ALL_PERMISSIONS, ROLE_PERMISSIONS, Permission, Role
 from app.models.access import OrganizationRolePermission, UserOrganizationAccess
 from app.models.audit import AuditLog
 from app.models.master import EmploymentType, LookupValue
@@ -36,13 +36,23 @@ ORGANIZATION_NAME = "test"
 LOGIN = "/api/v1/auth/login"
 ME = "/api/v1/auth/me"
 
-# Held only by AIC or the configurable SELF role (addendum §10.3); no admin trio has them.
+# Held only by the SELF role (addendum §10.3) or the payroll roles, which the bootstrap
+# administrator grants to people instead of holding (payroll addendum §16.1, maker-checker).
+_PAYROLL_ROLES = (
+    Role.PAYROLL_ADMINISTRATOR,
+    Role.PAYROLL_PROCESSOR,
+    Role.PAYROLL_APPROVER,
+    Role.FINANCE_USER,
+    Role.STATUTORY_COMPLIANCE_OFFICER,
+    Role.PAYROLL_AUDITOR,
+    Role.EMPLOYEE_ALUMNI,
+)
 OUTSIDE_BOOTSTRAP = {
-    Permission.ATTENDANCE_IMPORT,
-    Permission.SELF_ONBOARDING,
-    Permission.SELF_ATTENDANCE,
-    Permission.SELF_LEAVE,
-}
+    permission for permission in Permission if permission.value.startswith("self.")
+} | (
+    frozenset().union(*(ROLE_PERMISSIONS[role] for role in _PAYROLL_ROLES))
+    - frozenset().union(*(ROLE_PERMISSIONS[role] for role in BOOTSTRAP_ROLES))
+)
 
 
 @pytest.fixture

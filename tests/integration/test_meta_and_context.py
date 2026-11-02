@@ -57,7 +57,12 @@ class TestOrganizationContext:
         body = response.json()
         assert body["organization"]["id"] == str(org.id)
         assert body["organization"]["timezone"] == "Asia/Kolkata"
-        assert body["modules"] == {"onboarding": False, "attendance": False, "leave": False}
+        assert body["modules"] == {
+            "onboarding": False,
+            "attendance": False,
+            "leave": False,
+            "payroll": False,
+        }
         assert body["attendance"]["day_close_time"] == "12:00"
         assert body["me"] == {"employee_id": None, "employee_status": None}
 

@@ -118,6 +118,70 @@ class Permission(StrEnum):
     SELF_ATTENDANCE = "self.attendance"
     SELF_LEAVE = "self.leave"
 
+    # --- Payroll and statutory compliance addendum §16.2 ---
+    PAYROLL_VIEW = "payroll.view"
+    PAYROLL_CONFIG_MANAGE = "payroll.config_manage"
+    PAYROLL_PROFILE_MANAGE = "payroll.profile_manage"
+    PAYROLL_INPUT_MANAGE = "payroll.input_manage"
+    PAYROLL_INPUT_APPROVE = "payroll.input_approve"
+    PAYROLL_RUN_CREATE = "payroll.run_create"
+    PAYROLL_CALCULATE = "payroll.calculate"
+    PAYROLL_REVIEW = "payroll.review"
+    PAYROLL_APPROVE = "payroll.approve"
+    PAYROLL_LOCK = "payroll.lock"
+    PAYROLL_REOPEN = "payroll.reopen"
+    PAYROLL_REGISTER_VIEW = "payroll.register_view"
+    PAYROLL_AMOUNT_REVEAL = "payroll.amount_reveal"
+    PAYROLL_REPORT_VIEW = "payroll.report_view"
+    PAYROLL_PAYMENT_VIEW = "payroll.payment_view"
+    PAYROLL_PAYMENT_MANAGE = "payroll.payment_manage"
+    SALARY_STRUCTURE_MANAGE = "salary_structure.manage"
+    ARREAR_VIEW = "arrear.view"
+    ARREAR_MANAGE = "arrear.manage"
+    ARREAR_APPROVE_RECOVERY = "arrear.approve_recovery"
+    LOAN_VIEW = "loan.view"
+    LOAN_CONFIG_MANAGE = "loan.config_manage"
+    LOAN_MANAGE = "loan.manage"
+    LOAN_APPROVE = "loan.approve"
+    LOAN_APPROVE_FINANCE = "loan.approve_finance"
+    LOAN_DISBURSE = "loan.disburse"
+    TAX_VIEW = "tax.view"
+    TAX_CONFIG_MANAGE = "tax.config_manage"
+    TAX_DECLARATION_MANAGE = "tax.declaration_manage"
+    TAX_PROOF_VERIFY = "tax.proof_verify"
+    TAX_RETURN_MANAGE = "tax.return_manage"
+    TAX_CERTIFICATE_MANAGE = "tax.certificate_manage"
+    STATUTORY_CONFIG_MANAGE = "statutory.config_manage"
+    STATUTORY_RULE_PREPARE = "statutory.rule_prepare"
+    STATUTORY_RULE_PUBLISH = "statutory.rule_publish"
+    PF_VIEW = "pf.view"
+    PF_MANAGE = "pf.manage"
+    ESI_VIEW = "esi.view"
+    ESI_MANAGE = "esi.manage"
+    PT_VIEW = "pt.view"
+    PT_MANAGE = "pt.manage"
+    LWF_VIEW = "lwf.view"
+    LWF_MANAGE = "lwf.manage"
+    STATUTORY_CHALLAN_VIEW = "statutory.challan_view"
+    STATUTORY_CHALLAN_MANAGE = "statutory.challan_manage"
+    STATUTORY_RETURN_VIEW = "statutory.return_view"
+    STATUTORY_RETURN_MANAGE = "statutory.return_manage"
+    STATUTORY_RECONCILE = "statutory.reconcile"
+    BONUS_MANAGE = "bonus.manage"
+    PAYSLIP_VIEW = "payslip.view"
+    PAYSLIP_GENERATE = "payslip.generate"
+    PAYSLIP_REISSUE = "payslip.reissue"
+    FNF_VIEW = "fnf.view"
+    FNF_MANAGE = "fnf.manage"
+    FNF_APPROVE = "fnf.approve"
+    FNF_PAYMENT = "fnf.payment"
+    SELF_ACCESS_MANAGE = "self_access.manage"
+    SELF_PAYROLL = "self.payroll"
+    SELF_PAYSLIP = "self.payslip"
+    SELF_TAX = "self.tax"
+    SELF_TAX_DOCUMENTS = "self.tax_documents"
+    SELF_LOAN = "self.loan"
+
 
 class Role(StrEnum):
     """§5.1 roles. Values are the ``role_code`` stored in ``roles``."""
@@ -132,6 +196,15 @@ class Role(StrEnum):
     EMPLOYEE_SELF = "SELF"
     ONBOARDING_TASK_OWNER = "OTO"
     ATTENDANCE_INTEGRATION_CLIENT = "AIC"
+
+    # Payroll addendum §16.1.
+    PAYROLL_ADMINISTRATOR = "PAD"
+    PAYROLL_PROCESSOR = "PPR"
+    PAYROLL_APPROVER = "PAPV"
+    FINANCE_USER = "FIN"
+    STATUTORY_COMPLIANCE_OFFICER = "SCO"
+    PAYROLL_AUDITOR = "PAUD"
+    EMPLOYEE_ALUMNI = "SELF_ALUMNI"
 
 
 # -------------------------------------------------------------------------------------
@@ -446,6 +519,134 @@ ROLE_PERMISSIONS = _merge(ROLE_PERMISSIONS, _ADDENDUM_Y)
 ROLE_CONFIGURABLE_PERMISSIONS = _merge(ROLE_CONFIGURABLE_PERMISSIONS, _ADDENDUM_C)
 
 
+# -------------------------------------------------------------------------------------
+# Payroll addendum §16.3 matrix, transcribed row for row
+# -------------------------------------------------------------------------------------
+
+_PAYROLL_COLUMNS: tuple[Role, ...] = (
+    Role.SYSTEM_SUPER_ADMIN,
+    Role.ORGANIZATION_ADMIN,
+    Role.HR_ADMIN,
+    Role.HR_EXECUTIVE,
+    Role.DEPARTMENT_MANAGER,
+    Role.PAYROLL_ADMINISTRATOR,
+    Role.PAYROLL_PROCESSOR,
+    Role.PAYROLL_APPROVER,
+    Role.FINANCE_USER,
+    Role.STATUTORY_COMPLIANCE_OFFICER,
+    Role.PAYROLL_AUDITOR,
+    Role.EMPLOYEE_SELF,
+    Role.EMPLOYEE_ALUMNI,
+)
+_PAYROLL_MATRIX: dict[Permission, str] = {
+    #                               SSA OA HRA HRE DM PAD PPR PAPV FIN SCO PAUD SELF ALUM
+    Permission.PAYROLL_VIEW: "N C C N N Y Y Y Y Y Y N N",
+    Permission.PAYROLL_CONFIG_MANAGE: "N C N N N Y N N N N N N N",
+    Permission.PAYROLL_PROFILE_MANAGE: "N N C N N Y Y N N N N N N",
+    Permission.PAYROLL_INPUT_MANAGE: "N N C C N N Y N N N N N N",
+    Permission.PAYROLL_INPUT_APPROVE: "N N C N N Y N Y N N N N N",
+    Permission.PAYROLL_RUN_CREATE: "N N N N N C Y N N N N N N",
+    Permission.PAYROLL_CALCULATE: "N N N N N C Y N N N N N N",
+    Permission.PAYROLL_REVIEW: "N N N N N Y N Y N N N N N",
+    Permission.PAYROLL_APPROVE: "N N N N N N N Y N N N N N",
+    Permission.PAYROLL_LOCK: "N N N N N N N Y N N N N N",
+    Permission.PAYROLL_REOPEN: "N N N N N N N Y N N N N N",
+    Permission.PAYROLL_REGISTER_VIEW: "N N C N N Y Y Y N C Y N N",
+    Permission.PAYROLL_AMOUNT_REVEAL: "N N C N N Y Y Y N N C N N",
+    Permission.PAYROLL_REPORT_VIEW: "N C C N N Y Y Y Y Y Y N N",
+    Permission.PAYROLL_PAYMENT_VIEW: "N N N N N Y Y Y Y N Y N N",
+    Permission.PAYROLL_PAYMENT_MANAGE: "N N N N N N N N Y N N N N",
+    Permission.SALARY_STRUCTURE_MANAGE: "N C C N N Y N N N N N N N",
+    Permission.ARREAR_VIEW: "N N C N N Y Y Y N N Y N N",
+    Permission.ARREAR_MANAGE: "N N N N N Y Y N N N N N N",
+    Permission.ARREAR_APPROVE_RECOVERY: "N N N N N N N Y N N N N N",
+    Permission.LOAN_VIEW: "N N C N N Y Y Y Y N Y N N",
+    # ASSUMPTION: the spec gives loan.view / loan.manage one shared row. The auditor is
+    # read-only (section 16.1), so manage is that row without PAUD. loan.config_manage has no
+    # row at all; it goes to the Payroll Administrator, who owns payroll configuration.
+    Permission.LOAN_CONFIG_MANAGE: "N N N N N Y N N N N N N N",
+    Permission.LOAN_MANAGE: "N N C N N Y Y Y Y N N N N",
+    Permission.LOAN_APPROVE: "N N C N N N N Y N N N N N",
+    Permission.LOAN_APPROVE_FINANCE: "N N N N N N N N Y N N N N",
+    Permission.LOAN_DISBURSE: "N N N N N N N N Y N N N N",
+    Permission.TAX_VIEW: "N N C N N Y Y Y N Y Y N N",
+    Permission.TAX_CONFIG_MANAGE: "N N N N N Y N N N Y N N N",
+    Permission.TAX_DECLARATION_MANAGE: "N N C N N Y Y N N N N N N",
+    Permission.TAX_PROOF_VERIFY: "N N C C N Y Y N N Y N N N",
+    Permission.TAX_RETURN_MANAGE: "N N N N N N N N N Y N N N",
+    Permission.TAX_CERTIFICATE_MANAGE: "N N N N N N N N N Y N N N",
+    Permission.STATUTORY_CONFIG_MANAGE: "N N N N N Y N N N Y N N N",
+    Permission.STATUTORY_RULE_PREPARE: "Y N N N N N N N N N N N N",
+    Permission.STATUTORY_RULE_PUBLISH: "Y N N N N N N N N N N N N",
+    Permission.PF_VIEW: "N N C N N Y Y Y N Y Y N N",
+    Permission.ESI_VIEW: "N N C N N Y Y Y N Y Y N N",
+    Permission.PT_VIEW: "N N C N N Y Y Y N Y Y N N",
+    Permission.LWF_VIEW: "N N C N N Y Y Y N Y Y N N",
+    Permission.PF_MANAGE: "N N N N N N N N N Y N N N",
+    Permission.ESI_MANAGE: "N N N N N N N N N Y N N N",
+    Permission.PT_MANAGE: "N N N N N N N N N Y N N N",
+    Permission.LWF_MANAGE: "N N N N N N N N N Y N N N",
+    Permission.STATUTORY_CHALLAN_VIEW: "N N N N N Y N Y Y Y Y N N",
+    Permission.STATUTORY_CHALLAN_MANAGE: "N N N N N N N N C Y N N N",
+    Permission.STATUTORY_RETURN_VIEW: "N N N N N Y N Y N Y Y N N",
+    Permission.STATUTORY_RETURN_MANAGE: "N N N N N N N N N Y N N N",
+    Permission.STATUTORY_RECONCILE: "N N N N N N N N N Y N N N",
+    Permission.BONUS_MANAGE: "N N C N N Y Y N N N N N N",
+    Permission.PAYSLIP_VIEW: "N N C N N Y Y Y N N Y N N",
+    Permission.PAYSLIP_GENERATE: "N N N N N Y Y N N N N N N",
+    Permission.PAYSLIP_REISSUE: "N N N N N Y Y N N N N N N",
+    Permission.FNF_VIEW: "N N C N N Y Y Y Y N Y N N",
+    Permission.FNF_MANAGE: "N N C N N N Y N N N N N N",
+    Permission.FNF_APPROVE: "N N N N N N N Y N N N N N",
+    Permission.FNF_PAYMENT: "N N N N N N N N Y N N N N",
+    Permission.SELF_ACCESS_MANAGE: "N Y Y C N Y N N N N N N N",
+    # "O" (own record only): granted here, narrowed to the caller's own employee by the
+    # self-service endpoints. SELF is a C cell (the organization switches payroll
+    # self-service on, §4.1); the alumni role exists only through a revocable link.
+    Permission.SELF_PAYROLL: "N N N N N N N N N N N O N",
+    Permission.SELF_TAX: "N N N N N N N N N N N O N",
+    Permission.SELF_LOAN: "N N N N N N N N N N N O N",
+    Permission.SELF_PAYSLIP: "N N N N N N N N N N N O O",
+    Permission.SELF_TAX_DOCUMENTS: "N N N N N N N N N N N O O",
+}
+
+
+def _payroll_cells() -> tuple[dict[Role, frozenset[Permission]], dict[Role, frozenset[Permission]]]:
+    y: dict[Role, set[Permission]] = {}
+    c: dict[Role, set[Permission]] = {}
+    for permission, row in _PAYROLL_MATRIX.items():
+        cells = row.split()
+        if len(cells) != len(_PAYROLL_COLUMNS):
+            raise ValueError(f"{permission}: expected {len(_PAYROLL_COLUMNS)} cells")
+        for role, cell in zip(_PAYROLL_COLUMNS, cells, strict=True):
+            if cell == "Y" or (cell == "O" and role is Role.EMPLOYEE_ALUMNI):
+                y.setdefault(role, set()).add(permission)
+            elif cell in {"C", "O"}:
+                c.setdefault(role, set()).add(permission)
+    return (
+        {role: frozenset(perms) for role, perms in y.items()},
+        {role: frozenset(perms) for role, perms in c.items()},
+    )
+
+
+_PAYROLL_Y, _PAYROLL_C = _payroll_cells()
+# §16.3 "audit.view (payroll events)": the existing code gains the payroll roles that hold it.
+_PAYROLL_Y = _merge(
+    _PAYROLL_Y,
+    {
+        role: frozenset({Permission.AUDIT_VIEW})
+        for role in (
+            Role.PAYROLL_ADMINISTRATOR,
+            Role.PAYROLL_APPROVER,
+            Role.STATUTORY_COMPLIANCE_OFFICER,
+            Role.PAYROLL_AUDITOR,
+        )
+    },
+)
+ROLE_PERMISSIONS = _merge(ROLE_PERMISSIONS, _PAYROLL_Y)
+ROLE_CONFIGURABLE_PERMISSIONS = _merge(ROLE_CONFIGURABLE_PERMISSIONS, _PAYROLL_C)
+
+
 SCOPED_ROLES: frozenset[Role] = frozenset({Role.DEPARTMENT_MANAGER})
 """Roles whose employee access is narrowed to a subset of the organization (§5.4)."""
 
@@ -475,6 +676,12 @@ ORG_ADMIN_GRANTABLE_ROLES: frozenset[Role] = frozenset(
         Role.RESTRICTED_DOCUMENT_REVIEWER,
         Role.ONBOARDING_TASK_OWNER,
         Role.ATTENDANCE_INTEGRATION_CLIENT,
+        Role.PAYROLL_ADMINISTRATOR,
+        Role.PAYROLL_PROCESSOR,
+        Role.PAYROLL_APPROVER,
+        Role.FINANCE_USER,
+        Role.STATUTORY_COMPLIANCE_OFFICER,
+        Role.PAYROLL_AUDITOR,
     }
 )
 """§5.3 note 4: an OA may grant these roles, never SSA, and only in its own organizations."""

@@ -28,11 +28,13 @@ from app.api.v1.endpoints import (
     meta,
     onboarding,
     organizations,
+    payroll,
     positions,
     privacy,
     profile,
     salary,
     schedule,
+    statutory_rules,
     transfers,
     users,
 )
@@ -67,6 +69,10 @@ api_router.include_router(profile.router)
 api_router.include_router(documents.router)
 api_router.include_router(documents.storage_router)
 api_router.include_router(salary.router)
+
+# Payroll addendum §15.2 — settings, pay groups, period calendar.
+api_router.include_router(payroll.router)
+api_router.include_router(statutory_rules.router)
 api_router.include_router(privacy.router)
 api_router.include_router(transfers.router)
 

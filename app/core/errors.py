@@ -128,6 +128,9 @@ class ErrorCode(StrEnum):
 
     # --- onboarding, attendance and leave addendum §16.1 -----------------------
     MODULE_NOT_ENABLED = "MODULE_NOT_ENABLED"
+    PAYROLL_CURRENCY_NOT_SUPPORTED = "PAYROLL_CURRENCY_NOT_SUPPORTED"  # payroll addendum §20
+    STATUTORY_RULE_MISSING = "STATUTORY_RULE_MISSING"
+    RULE_SELF_PUBLISH_NOT_ALLOWED = "RULE_SELF_PUBLISH_NOT_ALLOWED"
     SELF_SERVICE_NOT_ENABLED = "SELF_SERVICE_NOT_ENABLED"
     NOT_CURRENT_APPROVER = "NOT_CURRENT_APPROVER"
     APPROVER_ALREADY_ACTED = "APPROVER_ALREADY_ACTED"
@@ -278,6 +281,9 @@ ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.POSITION_NOT_ACTIVE: HTTPStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.POSITION_REPORTING_CYCLE: HTTPStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.MODULE_NOT_ENABLED: HTTPStatus.FORBIDDEN,
+    ErrorCode.PAYROLL_CURRENCY_NOT_SUPPORTED: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.STATUTORY_RULE_MISSING: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.RULE_SELF_PUBLISH_NOT_ALLOWED: HTTPStatus.FORBIDDEN,
     ErrorCode.SELF_SERVICE_NOT_ENABLED: HTTPStatus.FORBIDDEN,
     ErrorCode.NOT_CURRENT_APPROVER: HTTPStatus.FORBIDDEN,
     ErrorCode.APPROVER_ALREADY_ACTED: HTTPStatus.CONFLICT,
@@ -904,6 +910,15 @@ SelfAdjustmentNotAllowed = _simple(ErrorCode.SELF_ADJUSTMENT_NOT_ALLOWED, "§6.1
 ModuleNotEnabled = _simple(
     ErrorCode.MODULE_NOT_ENABLED, "This module is not enabled for the organization."
 )
+StatutoryRuleMissing = _simple(
+    ErrorCode.STATUTORY_RULE_MISSING, "No published statutory rule applies on that date."
+)
+RuleSelfPublishNotAllowed = _simple(
+    ErrorCode.RULE_SELF_PUBLISH_NOT_ALLOWED, "A rule version cannot be published by its preparer."
+)
+PayrollCurrencyNotSupported = _simple(
+    ErrorCode.PAYROLL_CURRENCY_NOT_SUPPORTED, "Payroll supports only INR organizations."
+)
 
 
 __all__ = [
@@ -1016,6 +1031,7 @@ __all__ = [
     "OpeningBalanceExists",
     "OptionalHolidayInvalid",
     "OrgAccessDenied",
+    "PayrollCurrencyNotSupported",
     "PermissionDenied",
     "PolicyVersionNotFuture",
     "PositionAssignmentOverlap",
@@ -1035,6 +1051,7 @@ __all__ = [
     "ReportingCycle",
     "ResourceNotFound",
     "RestorationModeRequired",
+    "RuleSelfPublishNotAllowed",
     "SalaryAfterEmploymentEnd",
     "SalaryAssignmentOverlap",
     "SalaryNotCancellable",
@@ -1051,6 +1068,7 @@ __all__ = [
     "ShiftInUseImmutable",
     "ShiftWindowInvalid",
     "StatusCorrectionWindowExpired",
+    "StatutoryRuleMissing",
     "TaskNotWaivable",
     "TemplateArchived",
     "TemplateDraftExists",

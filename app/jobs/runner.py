@@ -10,6 +10,7 @@ from itertools import pairwise
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit.writer import AuditWriter
 from app.core.clock import today_in, utc_now
 from app.core.errors import JobAlreadyRunning
 from app.models.audit import IntegrityFinding
@@ -23,9 +24,16 @@ from app.models.salary import (
     SalaryTemplateVersion,
     TemplateVersionStatus,
 )
+from app.repositories.organization import OrganizationRepository, OrganizationSettingsRepository
+from app.repositories.payroll import (
+    PayGroupRepository,
+    PayrollPeriodRepository,
+    PayrollSettingsRepository,
+)
 from app.services.attendance_jobs import AttendanceJobs
 from app.services.job_runs import system_user_id
 from app.services.leave_jobs import LeaveJobs
+from app.services.payroll_config import PayrollConfigService
 from app.storage.local import LocalStorage
 
 CONFIRMED = {status.value for status in CONFIRMED_STATUSES}
@@ -247,6 +255,29 @@ def run_attendance_jobs(session: Session, organization_id: uuid.UUID) -> dict[st
     }
 
 
+def run_payroll_jobs(session: Session, organization_id: uuid.UUID) -> dict[str, int]:
+    """PAYROLL_CALENDAR (payroll addendum §18.1): generate periods 13 months ahead.
+
+    Idempotent, so a missed day is caught up by the next run.
+    """
+    settings = session.get(OrganizationSettings, organization_id)
+    if settings is None or not settings.enable_payroll_module:
+        return {}
+    service = PayrollConfigService(
+        settings=PayrollSettingsRepository(session, organization_id),
+        groups=PayGroupRepository(session, organization_id),
+        periods=PayrollPeriodRepository(session, organization_id),
+        organizations=OrganizationRepository(session),
+        org_settings=OrganizationSettingsRepository(session),
+        audit=AuditWriter(session),
+    )
+    return {
+        "payroll_periods_created": service.generate_periods(
+            organization_id, created_by=system_user_id(session)
+        )
+    }
+
+
 __all__ = [
     "check_integrity",
     "cleanup_pending_uploads",
@@ -257,4 +288,5 @@ __all__ = [
     "run_attendance_jobs",
     "run_for_organization",
     "run_leave_jobs",
+    "run_payroll_jobs",
 ]

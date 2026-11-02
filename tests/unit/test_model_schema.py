@@ -35,12 +35,20 @@ APPEND_ONLY_TABLES = {
     "salary_revision_history",
     "employee_code_registry",
     "login_attempts",
+    "statutory_rule_parameters",
+    "statutory_rule_slabs",
+    "statutory_rule_list_values",
 }
 """§1.5: "Append-only tables (audit logs, history/event tables, code registry) have only id,
 created_at, created_by and are never updated"."""
 
 PLATFORM_TABLES = {
     "states",
+    "statutory_rule_sets",
+    "statutory_rule_versions",
+    "statutory_rule_parameters",
+    "statutory_rule_slabs",
+    "statutory_rule_list_values",
     "users",
     "roles",
     "permissions",
@@ -67,11 +75,11 @@ carrying ``organization_id`` themselves."""
 
 class TestMetadataIsComplete:
     def test_all_model_modules_are_registered(self) -> None:
-        assert len(MODEL_MODULES) == 19
+        assert len(MODEL_MODULES) == 21
 
     def test_expected_table_count(self) -> None:
         """A tripwire: a table added or removed without updating the docs fails here."""
-        assert len(ALL_TABLES) == 109, f"schema now has {len(ALL_TABLES)} tables"
+        assert len(ALL_TABLES) == 119, f"schema now has {len(ALL_TABLES)} tables"
 
     def test_every_table_has_a_primary_key(self) -> None:
         """This server enforces ``sql_require_primary_key=ON`` (DEC-042)."""
@@ -346,13 +354,12 @@ class TestSensitiveColumnTypes:
 class TestScopeBoundary:
     """AC-24 / §4.2: out-of-scope HRMS tables must not exist.
 
-    Addendum §2.4 moved leave, attendance and shifts into scope, so those fragments are no
-    longer listed.
+    Addendum §2.4 moved leave, attendance and shifts into scope, and the payroll addendum
+    (Appendix B) moves payroll, payslips, tax declarations, challans, settlements and loans in,
+    so those fragments are no longer listed.
     """
 
     FORBIDDEN_TABLE_FRAGMENTS: ClassVar[tuple[str, ...]] = (
-        "payroll",
-        "payslip",
         "timesheet",
         "expense",
         "reimbursement",
@@ -363,13 +370,9 @@ class TestScopeBoundary:
         "recruit",
         "applicant",
         "interview",
-        "tax_declaration",
-        "challan",
         "gratuity_calculation",
-        "settlement",
         "invoice",
         "journal",
-        "loan",
     )
 
     @pytest.mark.parametrize("fragment", FORBIDDEN_TABLE_FRAGMENTS)

@@ -150,6 +150,9 @@ class SalaryTemplateComponentRepository(OrgScopedRepository[SalaryTemplateCompon
     ) -> None:
         for existing in self.list_for_version(version.id):
             self._session.delete(existing)
+        # Flush the deletes first: SQLAlchemy runs inserts before deletes in one flush, which
+        # would trip the (version, component) unique key when a row is replaced by itself.
+        self._session.flush()
         for row in rows:
             self.add(row)
 
@@ -236,6 +239,7 @@ class AssignmentComponentRepository(Repository):
     def replace(self, assignment_id: uuid.UUID, rows: Sequence[EmployeeSalaryComponent]) -> None:
         for existing in self.list_for_assignment(assignment_id):
             self._session.delete(existing)
+        self._session.flush()  # deletes before inserts, as in the template repository
         for row in rows:
             self._session.add(row)
 

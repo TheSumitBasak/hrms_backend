@@ -68,6 +68,7 @@ class WarningCode(StrEnum):
     LEAVE_PUNCH_CONFLICT = "W-LEAVE-PUNCH-CONFLICT"
     LEAVE_NEGATIVE_BALANCE = "W-LEAVE-NEGATIVE-BALANCE"
     LEAVE_NEGATIVE_AFTER_ADJUSTMENT = "W-LEAVE-NEGATIVE-AFTER-ADJUSTMENT"
+    PAY_PAYDATE_LATE = "W-PAY-PAYDATE-LATE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,6 +338,12 @@ _SPECS: tuple[WarningSpec, ...] = (
         "holiday",
         "This change touches FINALIZED attendance records, which are not altered.",
         "Addendum INT-21",
+    ),
+    WarningSpec(
+        WarningCode.PAY_PAYDATE_LATE,
+        "target_payment_date",
+        "The target payment date is after the statutory due date ({due_date}).",
+        "Payroll addendum MW-10",
     ),
     WarningSpec(
         WarningCode.LEAVE_PUNCH_CONFLICT,

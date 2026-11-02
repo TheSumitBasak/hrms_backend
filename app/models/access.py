@@ -170,7 +170,7 @@ class OrganizationRolePermission(Base, PrimaryKeyColumn):
     organization_id: Mapped[uuid.UUID] = mapped_column(
         Uuid7, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
     )
-    role_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    role_code: Mapped[str] = mapped_column(String(20), nullable=False)
     permission_code: Mapped[str] = mapped_column(String(60), nullable=False)
     """Stored as the code rather than a FK to ``permissions``, because the authoritative list
     is :class:`app.core.permissions.Permission`; the row is validated against that enum and
